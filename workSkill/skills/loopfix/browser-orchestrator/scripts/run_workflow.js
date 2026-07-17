@@ -36,7 +36,7 @@ function findProjectRoot(cwd) {
 
 function findLoopfixSkillDir() {
   const candidates = [
-    path.resolve(__dirname, "..", "..", "loopfix"), // suite: loopfix/browser-orchestrator → loopfix/loopfix
+    path.resolve(__dirname, "..", "..", "loopfix"), // skills/loopfix/browser-orchestrator → sibling loopfix/
     path.resolve(__dirname, "..", "..", "loopfix", "loopfix"),
     path.resolve(__dirname, ".."), // flat single-skill install
   ];

@@ -1,10 +1,10 @@
 ---
 name: loopfix
-description: "AI engineering quality loop after coding: select Flow Probe/workflow → browser-orchestrator batch exec → Evidence → Failure Router → repair app → Knowledge. Not test framework/E2E/click-robot. Triggers: validate, verify, check, regression, test page, test flow, validate page, verify flow, loopfix, init .loopfix, 验证, 检查, 回归, 帮我验证 URL, 验证这个页面, 检查这个功能, 回归测试. LLM selects workflow only — never step-clicks. Fail: network→console→state→dom→action last. Project UI knowledge in .loopfix/ only."
+description: "AI engineering quality loop after coding: select Flow Probe/workflow → browser-orchestrator batch exec → Evidence → Failure Router → repair app → Knowledge. Not test framework/E2E/click-robot. Install suite: skills/loopfix (with browser-orchestrator). Triggers: validate, verify, check, regression, test page, test flow, validate page, verify flow, loopfix, init .loopfix, 验证, 检查, 回归, 帮我验证 URL, 验证这个页面, 检查这个功能, 回归测试. LLM selects workflow only — never step-clicks. Fail: network→console→state→dom→action last. Project UI knowledge in .loopfix/ only."
 argument-hint: "<url|path> [--full|--targeted] [--init-only] [--no-fix] [--quick] [--explore]"
 allowed-tools:
-  - Bash(node **/loopfix/loopfix/scripts/*)
-  - Bash(node **/loopfix/browser-orchestrator/scripts/*)
+  - Bash(node **/skills/loopfix/loopfix/scripts/*)
+  - Bash(node **/skills/loopfix/browser-orchestrator/scripts/*)
   - Bash(agent-browser:*)
   - Bash(npx agent-browser:*)
   - Read(**/.loopfix/**)
@@ -16,7 +16,14 @@ allowed-tools:
 
 **Is:** AI-coding → validate → Evidence → attribute → fix → memory.  
 **Not:** test framework / E2E / click-robot.  
-**Suite:** `loopfix/loopfix` (this) + `loopfix/browser-orchestrator` (exec). Official `agent-browser` for atoms.
+**Catalog:** `skills/loopfix/{loopfix,browser-orchestrator}/`. Official `agent-browser` for atoms.
+
+**Install suite (both skills):**
+
+```bash
+npx skills add <owner/repo>/skills/loopfix --skill '*'
+# or interactive: select both loopfix + browser-orchestrator
+```
 
 IRON LAW:
 1. No browser without Probe on disk (except `--explore`).
@@ -66,6 +73,7 @@ Else `FAIL` or `INCOMPLETE` (mid-stop / skip / guess).
 ```bash
 node <suite>/browser-orchestrator/scripts/check_agent_browser.js
 node <suite>/loopfix/scripts/init_loopfix.js
+# <suite> = skills/loopfix/
 ```
 
 Missing CLI → stop; install steps in `browser-orchestrator/references/agent-browser-dependency.md`.

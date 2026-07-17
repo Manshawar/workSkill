@@ -1,0 +1,92 @@
+{
+  "role": "",
+  "auto_copy": null,
+  "node_available": true,
+  "git_user_email": "",
+  "repositories": [
+    {
+      "path": "~/work/project-a",
+      "alias": "project-a",
+      "display_name": "",
+      "git_remote": "https://git.example.com/team/project-a.git",
+      "added_at": "2026-07-08T12:10:21Z",
+      "last_used_at": "2026-07-08T12:38:23Z"
+    },
+    {
+      "path": "~/work/project-b",
+      "alias": "knowledge-library",
+      "display_name": "",
+      "git_remote": "https://git.example.com/team/project-b.git",
+      "added_at": "2026-07-08T12:12:17Z",
+      "last_used_at": "2026-07-08T12:38:23Z"
+    },
+    {
+      "path": "~/work/project-c",
+      "alias": "ToDoTask",
+      "display_name": "",
+      "git_remote": "https://git.example.com/team/project-c.git",
+      "added_at": "2026-07-08T12:12:17Z",
+      "last_used_at": "2026-07-08T12:38:23Z"
+    },
+    {
+      "path": "/Volumes/other/mySkills",
+      "alias": "mySkills",
+      "display_name": "",
+      "git_remote": "https://github.com/Manshawar/workSkill.git",
+      "added_at": "2026-07-08T12:38:18Z",
+      "last_used_at": "2026-07-08T12:38:23Z"
+    }
+  ],
+  "role_definitions": {
+    "前端": {
+      "use_git": true,
+      "soft_work_categories": [
+        "联调",
+        "提测",
+        "UI 走查",
+        "code review",
+        "配合后端"
+      ]
+    },
+    "后端": {
+      "use_git": true,
+      "soft_work_categories": [
+        "接口对齐",
+        "性能优化",
+        "排查线上问题",
+        "code review",
+        "配合前端"
+      ]
+    },
+    "运维": {
+      "use_git": false,
+      "soft_work_categories": [
+        "升级",
+        "备份",
+        "监控",
+        "配合客户"
+      ]
+    },
+    "测试": {
+      "use_git": false,
+      "soft_work_categories": [
+        "走查",
+        "复现 bug",
+        "配合开发排查",
+        "验收",
+        "回归"
+      ]
+    },
+    "产品": {
+      "use_git": false,
+      "soft_work_categories": [
+        "需求评审",
+        "写 PRD",
+        "用户访谈",
+        "走查",
+        "验收"
+      ]
+    }
+  },
+  "_hint": "role: 空 → 弹角色选择;auto_copy: null → 弹\"是否启用剪贴板\";git_user_email: 顶层共享;repositories: 用 save-repo 管理;role_definitions: 5 角色元数据"
+}

@@ -3,8 +3,8 @@ name: browser-orchestrator
 description: "LoopFix browser orchestration: load workflow → resolve Action → batch official agent-browser → Evidence. Not a browser driver. Triggers: run workflow, execute workflow, orchestrate browser, browser-orchestrator, batch browser flow, 执行工作流, 跑 workflow, 编排浏览器. LLM must NOT click step-by-step. Calls agent-browser only."
 argument-hint: "<workflow-id|path> [--cwd <project>] [--dry-run] [--base-url <url>]"
 allowed-tools:
-  - Bash(node **/loopfix/browser-orchestrator/scripts/*)
-  - Bash(node **/loopfix/loopfix/scripts/*)
+  - Bash(node **/skills/loopfix/browser-orchestrator/scripts/*)
+  - Bash(node **/skills/loopfix/loopfix/scripts/*)
   - Bash(agent-browser:*)
   - Bash(npx agent-browser:*)
   - Read(**/.loopfix/**)
@@ -16,7 +16,13 @@ allowed-tools:
 
 IRON LAW: **LLM picks workflow id. This skill executes. Never step-click in chat.**
 
-Suite: called by `loopfix/loopfix`. Atoms = official `agent-browser` only — see `references/agent-browser-dependency.md`.
+Catalog: `skills/loopfix/` — install with sibling `loopfix` via:
+
+```bash
+npx skills add <owner/repo>/skills/loopfix --skill '*'
+```
+
+Atoms = official `agent-browser` only — `references/agent-browser-dependency.md`.
 
 ## Parameters
 
