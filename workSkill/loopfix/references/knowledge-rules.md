@@ -1,38 +1,69 @@
 # Knowledge Rules
 
-## Ban
+Knowledge ≠ error log. Skill stays generic; **project** facts live under `.loopfix/knowledge/`.
 
-Page-level error notes:
+## Ban
 
 ```
 user-page-error.md
-order-page-error.md
+page-error-001.md
 ```
 
-## Abstract instead
+Ban writing project widget recipes into the loopfix **skill**.
 
-| Type | Meaning |
-|------|---------|
-| Rule | Long-lived rule |
-| Pattern | Recurring problem shape |
-| Incident | Concrete case |
-
-Cross-ref:
+## Layout
 
 ```
-Probe Definition → Probe Execution → Evidence → Incident → Pattern → Rule
+knowledge/
+  drafts/         # raw extractions notes
+  components/     # how a project widget works
+  patterns/       # recurring problem shapes
+  flows/          # flow-level learnings
 ```
 
-## MVP write path
+## Types
+
+| Type | Where | Meaning |
+|------|-------|---------|
+| component | `components/` | Open/select/confirm/success for a project control |
+| pattern | `patterns/` | Recurring failure shape |
+| flow | `flows/` | Cross-cutting flow notes |
+| incident | `drafts/` → promote | One Evidence-backed case |
+| rule | promote from pattern | Long-lived constraint |
+
+Chain:
+
+```
+Evidence → Incident → Pattern → Rule
+```
+
+## Component note template
+
+`.loopfix/knowledge/components/<widget-slug>.md`:
+
+```markdown
+# <Widget name>
+
+- Open:
+- Select / input:
+- Confirm:
+- Success state:
+- Related action: browser/actions/...
+- Source run: .loopfix/runs/...
+```
+
+Created after UNKNOWN_INTERACTION + user answer (or after verified discovery).
+
+## Draft template
 
 `.loopfix/knowledge/drafts/<topic>.md`:
 
 ```markdown
-# <Abstract title, not a page name>
+# <Abstract title>
 
-- Type: pattern | rule | incident
-- Related probe: <name>
+- Type: pattern | rule | incident | flow
+- Related flow: <flow id>
 - Run: .loopfix/runs/<id>/
-- Summary: <1-2 sentences>
-- Guidance: <how to avoid / how to re-verify>
+- Summary:
+- Guidance:
 ```

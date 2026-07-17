@@ -33,33 +33,34 @@ function writeFile(filePath, content, force) {
   }
   ensureDir(path.dirname(filePath));
   fs.writeFileSync(filePath, content, "utf8");
-  return fs.existsSync(filePath) && !force ? "written" : force ? "overwritten" : "written";
+  return force ? "overwritten" : "written";
 }
 
 function copyAsset(src, dest, force) {
   if (fs.existsSync(dest) && !force) return "skipped";
   ensureDir(path.dirname(dest));
   fs.copyFileSync(src, dest);
-  return force && fs.existsSync(dest) ? "overwritten" : "written";
+  return force ? "overwritten" : "written";
 }
 
 function checkStatus(root) {
   const required = [
     "config.yaml",
     "references/agent-browser.md",
+    "browser/index.yaml",
     "browser/probes",
+    "browser/actions",
     "knowledge/drafts",
+    "knowledge/components",
+    "knowledge/patterns",
+    "knowledge/flows",
     "runs",
   ];
   const missing = [];
   for (const rel of required) {
     if (!fs.existsSync(path.join(root, rel))) missing.push(rel);
   }
-  return {
-    root,
-    exists: missing.length === 0,
-    missing,
-  };
+  return { root, exists: missing.length === 0, missing };
 }
 
 function main() {
@@ -83,26 +84,38 @@ function main() {
   const dirs = [
     "references",
     "browser/probes",
+    "browser/actions/ui",
+    "browser/actions/components",
     "knowledge/drafts",
+    "knowledge/components",
+    "knowledge/patterns",
+    "knowledge/flows",
     "runs",
   ];
   for (const d of dirs) {
-    const full = path.join(root, d);
-    ensureDir(full);
+    ensureDir(path.join(root, d));
     actions.push({ path: d, action: "mkdir" });
   }
 
-  // .gitkeep for empty dirs
-  for (const d of ["browser/probes", "knowledge/drafts", "runs"]) {
-    const gk = path.join(root, d, ".gitkeep");
-    const r = writeFile(gk, "", args.force);
+  for (const d of [
+    "browser/probes",
+    "browser/actions/components",
+    "knowledge/drafts",
+    "knowledge/components",
+    "knowledge/patterns",
+    "knowledge/flows",
+    "runs",
+  ]) {
+    const r = writeFile(path.join(root, d, ".gitkeep"), "", args.force);
     actions.push({ path: `${d}/.gitkeep`, action: r });
   }
 
   const copies = [
     ["config.yaml", "config.yaml"],
     ["agent-browser.md", "references/agent-browser.md"],
+    ["index.yaml", "browser/index.yaml"],
     ["probe.example.yaml", "browser/probes/_example.login.yaml"],
+    ["action.dialog.example.yaml", "browser/actions/ui/dialog.yaml"],
   ];
 
   for (const [srcName, destRel] of copies) {
@@ -111,9 +124,7 @@ function main() {
       actions.push({ path: destRel, action: "error", error: `missing asset ${srcName}` });
       continue;
     }
-    // never force-overwrite example probe unless --force; example can stay as template
-    const dest = path.join(root, destRel);
-    const r = copyAsset(src, dest, args.force);
+    const r = copyAsset(src, path.join(root, destRel), args.force);
     actions.push({ path: destRel, action: r });
   }
 

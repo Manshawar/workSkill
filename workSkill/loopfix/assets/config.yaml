@@ -1,17 +1,21 @@
-# .loopfix project config (MVP)
+# .loopfix project config
 
-version: 1
+version: 2
 
 browser:
   tool: agent-browser
-  headed: true          # required for debug; never default headless
+  headed: true
 
 validation:
-  default_scope: full   # full | targeted
+  default_scope: full
   max_fix_rounds: 3
+  # Flow PASS requires last step + expects + no UNKNOWN + no unresolved blockers
+  require_full_flow_pass: true
 
 paths:
+  index: browser/index.yaml
   probes: browser/probes
-  knowledge_drafts: knowledge/drafts
+  actions: browser/actions
+  knowledge: knowledge
   runs: runs
   references: references

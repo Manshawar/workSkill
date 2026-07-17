@@ -1,6 +1,6 @@
 name: example-login
 status: draft
-description: Example Probe (safe to delete). Open login and check form visibility.
+goal: Login form is visible
 base_url: http://localhost:3000
 scope: targeted
 tags: [example, auth]

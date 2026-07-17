@@ -1,117 +1,102 @@
-# Probe Format
+# Flow Probe Format
 
-Probe = **executable contract** for a user-behavior loop. Actions only — no analysis, no fixes.
+Flow Probe = **pre-exec contract** for a **user-behavior loop** (goal), not a component test.
 
-Created **before** browser execution (`draft` OK). Refined during/after runs. Promoted to `verified` on PASS.
+Layers: `Flow Probe → Action → agent-browser`.
 
 ## Path
 
-`.loopfix/browser/probes/<name>.yaml`
+`.loopfix/browser/probes/<domain>/<flow>.yaml`  
+Example: `probes/user/create-user.yaml`
+
+Register every flow in `browser/index.yaml` → `references/registry-format.md`.
 
 ## Status
 
 ```yaml
-status: draft       # draft | ready | verified | deprecated
+status: draft   # draft | ready | verified | deprecated
 ```
 
-| Status | Use |
+| Status | Bar |
 |--------|-----|
-| `draft` | Pre-exec required minimum; AI may leave gaps |
-| `ready` | Steps filled; not yet Evidence-PASS |
-| `verified` | Prefer for reuse |
-| `deprecated` | Do not reuse |
+| `draft` | Incomplete OK; **cannot** claim formal Flow PASS |
+| `ready` | Every step has concrete `action` / `ref` / `use`; OR explicit `skip_reason` + `skip_needs`. No eval placeholders. No pretending unknown ops succeeded |
+| `verified` | At least one Flow PASS Evidence (last step + all expects + no UNKNOWN + no unresolved blockers) |
+| `deprecated` | Do not select |
 
 ## Schema
 
 ```yaml
-name: user-create
+name: create-user
 status: draft
-description: Create-user behavior loop
+goal: User created and visible in list
 base_url: http://localhost:3000
-scope: full                # full | targeted
+scope: full                 # full | targeted
 tags: [user, crud]
 
 steps:
   - id: open
     action: open
     url: /users
-  - id: search
-    action: fill
-    target: "Search"       # human label; resolve via snapshot refs at runtime
-    value: "test"
-  - id: create
+  - id: open-dialog
+    use: actions/ui/dialog.yaml
+    with:
+      intent: open
+      title: Create User
+  - id: fill-form
+    use: actions/ui/form.yaml
+    with:
+      fields:
+        name: "demo"
+  - id: submit
     action: click
-    target: "Create"
-  # actions: open | click | fill | type | select | wait | snapshot
-  # screenshot: not a default step
+    target: "Submit"
+  - id: verify
+    action: snapshot
+
+  # If a step cannot run yet:
+  # - id: assign-owner
+  #   skip_reason: unknown owner picker interaction
+  #   skip_needs: how to open, select, confirm, success state
 
 expect:
   - type: no_console_errors
+  - type: visible
+    target: "demo"
   - type: url_contains
     value: /users
-  - type: visible
-    target: "Success"
 ```
 
-## Flow Probe + Sub Probe
+Primitive `action` values: `open | click | fill | type | select | wait | snapshot`  
+(screenshot not a default step)
 
-Split by **user-behavior loop**, not by page element.
+`use:` → expand Action file (`references/action-format.md`).
 
-Bad (explodes):
+## Split rules
+
+| Do | Don't |
+|----|-------|
+| One Probe per user-behavior loop | One Probe per button/dialog |
+| Domain folders (`user/`, `order/`) | Flat button-click.yaml zoo |
+| Reference Actions for reusable widgets | Embed project widget recipes in skill |
+
+Same URL + different loop → **new** Probe. Same loop → reuse/extend.
+
+## Flow PASS (restate)
 
 ```
-create-button.yaml
-cancel-button.yaml
-refresh-button.yaml
+last_executed_step_id == last_step_id
+AND all expect pass
+AND no unresolved UNKNOWN_INTERACTION
+AND no unresolved blocking exceptions
 ```
 
-Good:
-
-```
-user-management.yaml    # flow: query / create / edit / delete
-user-create.yaml         # sub-loop if reused across flows
-```
-
-Flow may reference subs:
-
-```yaml
-name: user-management
-status: draft
-scope: full
-steps:
-  - id: query
-    ref: user-list-query.yaml
-  - id: create
-    ref: user-create.yaml
-  - id: delete
-    ref: user-delete.yaml
-```
-
-`ref` = another file under `browser/probes/` (basename or relative). Execute by inlining the referenced Probe's steps.
-
-## Reuse vs new
-
-| Situation | Action |
-|-----------|--------|
-| Same behavior loop, Probe `verified`/`ready` | Reuse; update if UI drifted |
-| Same URL, **different** loop (smoke vs deep add) | **New** Probe; keep old smoke intact |
-| Single control click inside an existing loop | Extend that Probe's steps — do **not** new file per button |
-| Unknown flow | New `draft` with best-known steps + expect stubs |
+Else `FAIL` or `INCOMPLETE` — never inflate to PASS.
 
 ## Draft quality bar (pre-exec)
 
-Enough to start — not a novel:
+AI writes file before browser:
 
-- `name`, `status: draft`, `base_url` or target URL, `scope`
-- At least the **entry** step + intended outcome in `expect`
-- Named steps for the loop you plan to cover (stubs OK: `target` labels without perfect selectors)
-
-AI generates this file. Humans are not required to hand-write full YAML.
-
-## Rules
-
-- No Probe file → no execution (unless `--explore`)
-- Mid-run gaps → edit the Probe, then continue
-- After PASS → `status: verified` (or `ready` if partial by intent)
-- Never re-explore from scratch when a matching Probe exists
-- Prefer `verified` > `ready` > `draft` when choosing reuse
+- `name`, `status`, `goal`, `scope`, entry step, expect stubs
+- Known middle steps as labels/`use` stubs OK in `draft`
+- Register in `index.yaml`

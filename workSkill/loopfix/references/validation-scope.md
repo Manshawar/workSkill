@@ -1,20 +1,24 @@
 # Validation Scope
 
+Object of validation = **user-behavior loop**, not a button/component.
+
 ## Full Flow (default)
 
-Triggers: "validate this page", "check this feature", "verify \<url\>".
+Run the business loop, e.g.:
 
-Run the full business flow, e.g. enter → search → create → edit → delete → paginate → filter.
+enter → query → create → edit → delete → paginate → filter
 
-**Do not** only click the changed control. One change can break adjacent flows.
+Collect **all** issues in one run when safe. Do not stop at first glitch and call the flow done.
+
+Step success (validation msg / button present / API 2xx) ≠ Flow PASS.
 
 ## Targeted
 
-Triggers: user names a single control/step ("only the create button", "just login").
+User names one loop ("only create user", "only VDAdd path").
 
-Run only related steps to cut cost.
+Still a behavior loop — not a single control click Probe.
 
-Decide:
+## Decide
 
-- Named single control/step? + `--targeted` or explicit "only" → Targeted
-- Otherwise → Full Flow
+- Named single loop / "only …" / `--targeted` → Targeted
+- Else → Full Flow

@@ -1,12 +1,10 @@
 # Evidence Format
 
-Evidence = facts for **one execution**. Not Knowledge. Not a child of Probe — peer under the same Flow:
+Evidence = one real execution. Peer of Probe (not child).
 
 ```
-Probe (how)  +  Execution  →  Evidence (what happened)
+Flow Probe (how) + Execution → Evidence (what happened)
 ```
-
-Link via `probe` field (Probe `name` or path).
 
 ## Path
 
@@ -14,51 +12,51 @@ Link via `probe` field (Probe `name` or path).
 
 ```
 evidence.json
-screenshot/          # optional; often empty on clean PASS
+screenshot/          # optional
 report.md
 ```
 
-## Primary signal: snapshot (not screenshot)
+## Perception
 
-| Signal | When | Token cost |
-|--------|------|------------|
-| `snapshot` | **Every** interactive step | Low (text) |
-| console / network | On errors or end of run | Low |
-| `screenshot` | **Only if necessary** (below) | High if read into context |
+| Signal | When |
+|--------|------|
+| `snapshot` | Every interactive step (default) |
+| console / network | Errors + end |
+| `screenshot` | Fail / visual-only doubt / optional final archive — sparse |
 
-### Screenshot only when
-
-1. **FAIL** — capture the failing step (disk path in evidence; read image only if snapshot cannot explain)
-2. **Visual suspicion** — layout/canvas/style/truncation that a11y tree cannot show
-3. **Optional final archive** — one end-state PNG for humans, no need to reload into the model
-
-### Do not
-
-- Screenshot every step by default
-- Treat screenshot as the main navigation sense
-- Re-ingest all PNGs into context when `evidence.json` + snapshot text already suffice
+Do not screenshot every step. Prefer disk path over re-reading PNGs.
 
 ## evidence.json
 
 ```json
 {
-  "run_id": "2026-07-17-user-flow",
+  "run_id": "20260717-user-create",
+  "flow": "user-create",
+  "probe": "probes/user/create-user.yaml",
   "target": "http://localhost:3000/users",
   "scope": "full",
-  "probe": "user-create",
   "started_at": "ISO-8601",
   "ended_at": "ISO-8601",
-  "result": "pass | fail",
+  "flow_result": "PASS | FAIL | INCOMPLETE",
+  "halted_at": null,
+  "last_executed_step_id": "verify",
+  "last_step_id": "verify",
+  "unknown_interactions": [],
   "steps": [
     {
       "id": "open",
       "action": "open",
+      "result": "ok",
       "url": "http://localhost:3000/users",
-      "ok": true,
-      "snapshot_note": "Users table visible",
+      "snapshot_note": "list visible",
       "screenshot": null,
+      "console": [],
+      "network": [],
       "notes": ""
     }
+  ],
+  "expect_results": [
+    { "type": "visible", "target": "demo", "ok": true }
   ],
   "console_errors": [],
   "network_errors": [],
@@ -67,16 +65,12 @@ report.md
 }
 ```
 
-`screenshot` may be `null` or omitted when unused.
+Step `result`: `ok | fail | skip | unknown`
 
-## Required
+`halted_at`: step id when stopped early / UNKNOWN_INTERACTION wait; else `null`.
 
-- URL / steps
-- console errors (if any)
-- network errors (if any)
-- final state (text from snapshot is enough on PASS)
-- screenshots **only** per rules above — not mandatory on PASS
+`flow_result` must follow Flow PASS rules in SKILL.md — never mark `PASS` if INCOMPLETE conditions hold.
 
 ## report.md
 
-Human summary: result, failed steps, root-cause hypothesis, next action (fix / no-fix).
+Flow Result, halted_at, failed/unknown steps, issues list, next action.

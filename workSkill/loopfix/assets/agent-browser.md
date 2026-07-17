@@ -1,6 +1,6 @@
 # agent-browser (project conventions)
 
-Project rules only — not full CLI docs. For commands:
+Not full CLI docs:
 
 ```bash
 agent-browser skills get core
@@ -9,25 +9,28 @@ agent-browser skills get core --full
 
 ## Required
 
-- **Headed**: `agent-browser open <url> --headed`
+- Headed: `agent-browser open <url> --headed`
 - Sole browser layer: agent-browser
-- loopfix schedules + analyzes only; do not reimplement browsing
+- loopfix schedules only
 
-## Typical flow
+## Selection → execute
+
+1. Read `.loopfix/browser/index.yaml` (catalog only)
+2. Load one Flow Probe
+3. Expand `use:` Actions
+4. Run primitives via agent-browser
+
+## Typical
 
 ```bash
 agent-browser open <url> --headed
-agent-browser snapshot          # primary sense — use every step
+agent-browser snapshot
 agent-browser click @eN
 agent-browser fill @eN "text"
-# screenshot ONLY on fail / visual doubt / optional final archive:
-# agent-browser screenshot .loopfix/runs/<slug>/screenshot/fail.png
+# screenshot only on fail / visual doubt / optional archive
 agent-browser close
 ```
 
-## Evidence collection
+## UNKNOWN_INTERACTION
 
-- **Default**: snapshot notes + console/network → `evidence.json`
-- **Screenshot**: fail step, visual-only bugs, or one optional final PNG for humans
-- Prefer disk path in evidence over re-reading images into the model
-- write `.loopfix/runs/<slug>/evidence.json`
+No eval placeholders / guess clicks. Ask user → write Action + knowledge/components.
