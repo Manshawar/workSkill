@@ -73,7 +73,7 @@ node <skill_dir>/scripts/init_loopfix.js
 
 `<skill_dir>` = directory of this SKILL.md.
 
-Scaffold: config, agent-browser ref, thin validation-loop entry, empty probes/drafts/runs.
+Scaffold: config, agent-browser ref, empty probes/drafts/runs. No project-local skill — invoke installed `loopfix` only.
 
 Overwrite existing files only after user confirm. Never silent overwrite.
 
@@ -177,7 +177,7 @@ On PASS:
 
 ## Pre-Delivery Checklist
 
-- [ ] `.loopfix/` has config.yaml + skills/validation-loop + references/agent-browser.md
+- [ ] `.loopfix/` has config.yaml + references/agent-browser.md + probes/drafts/runs
 - [ ] Used `agent-browser ... --headed`
 - [ ] `runs/<slug>/` has evidence.json + ≥1 screenshot + report.md
 - [ ] FAIL+fixed → re-ran same Probe

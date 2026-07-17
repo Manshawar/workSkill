@@ -46,7 +46,6 @@ function copyAsset(src, dest, force) {
 function checkStatus(root) {
   const required = [
     "config.yaml",
-    "skills/validation-loop/SKILL.md",
     "references/agent-browser.md",
     "browser/probes",
     "knowledge/drafts",
@@ -82,7 +81,6 @@ function main() {
   const actions = [];
 
   const dirs = [
-    "skills/validation-loop",
     "references",
     "browser/probes",
     "knowledge/drafts",
@@ -104,7 +102,6 @@ function main() {
   const copies = [
     ["config.yaml", "config.yaml"],
     ["agent-browser.md", "references/agent-browser.md"],
-    ["validation-loop-SKILL.md", "skills/validation-loop/SKILL.md"],
     ["probe.example.yaml", "browser/probes/_example.login.yaml"],
   ];
 

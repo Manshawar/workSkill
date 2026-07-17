@@ -11,7 +11,7 @@ agent-browser skills get core --full
 
 - **Headed**: `agent-browser open <url> --headed`
 - Sole browser layer: agent-browser
-- loopfix / validation-loop schedule + analyze only; do not reimplement browsing
+- loopfix schedules + analyzes only; do not reimplement browsing
 
 ## Typical flow
 
