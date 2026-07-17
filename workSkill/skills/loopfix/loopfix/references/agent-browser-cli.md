@@ -1,7 +1,8 @@
 # agent-browser CLI (Failure Router subset)
 
-Install / check: sibling `browser-orchestrator/scripts/check_agent_browser.js`  
-Full docs: `agent-browser skills get core [--full]`
+Load only when debugging a FAIL (Step 6). Full docs: `agent-browser skills get core [--full]`
+
+If `run_workflow.js` returns `AGENT_BROWSER_MISSING`, relay its `install` object — do not maintain a loopfix check script.
 
 After sticky session (`browser_env.js` / orchestrator):
 

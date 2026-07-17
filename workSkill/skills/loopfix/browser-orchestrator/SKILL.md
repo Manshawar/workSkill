@@ -22,7 +22,7 @@ Catalog: `skills/loopfix/` — install with sibling `loopfix` via:
 npx skills add <owner/repo>/skills/loopfix --skill '*'
 ```
 
-Atoms = official `agent-browser` only — `references/agent-browser-dependency.md`.
+Atoms = official `agent-browser` only. No pre-check — missing CLI surfaces as `AGENT_BROWSER_MISSING` from `run_workflow.js` with `install` hints.
 
 ## Parameters
 
@@ -36,23 +36,15 @@ Atoms = official `agent-browser` only — `references/agent-browser-dependency.m
 ## Workflow
 
 ```
-- [ ] Step 0: check_agent_browser + session ⛔
-- [ ] Step 1–2: run_workflow.js (load + resolve) ⛔
-- [ ] Step 3: UNKNOWN_ACTION → ask user ⚠️
-- [ ] Step 4: batch execute → Evidence
-- [ ] Step 5: return status to loopfix
+- [ ] Step 1: run_workflow.js (load + session + batch) ⛔
+- [ ] Step 2: UNKNOWN_ACTION → ask user ⚠️
+- [ ] Step 3: return status to loopfix
 ```
 
-## Step 0 ⛔
+Session: inside `run_workflow.js` via loopfix `browser_env.js` (sticky `--session --restore`).  
+`AGENT_BROWSER_MISSING` → relay JSON `install` to user; do not maintain a local check script.
 
-```bash
-node <this_skill>/scripts/check_agent_browser.js
-```
-
-Missing → stop; install per `references/agent-browser-dependency.md`.  
-Session: `run_workflow.js` calls loopfix `browser_env.js` (sticky `--session --restore`).
-
-## Step 1–4
+## Step 1
 
 ```bash
 node <this_skill>/scripts/run_workflow.js <workflow-id> --cwd <project> [--dry-run] [--base-url <url>] [--no-bail]
@@ -62,9 +54,9 @@ Script: load workflow → expand Action → `agent-browser batch` → write `.lo
 Schemas when editing: `workflow-schema.md`, `action-schema.md`, `evidence-schema.md`.  
 `UNKNOWN_ACTION` → ask → write `.loopfix/browser/actions/` → re-run. No eval/guess/skip.
 
-## Step 5
+## Step 3
 
-Return `status`, `run_id`, `evidence` path, `unknown_actions[]`.  
+Return `status`, `run_id`, `evidence` path, `unknown_actions[]`, `install` (if missing CLI).  
 loopfix owns Failure Router / repair.
 
 ## Anti-Patterns / Pre-Delivery

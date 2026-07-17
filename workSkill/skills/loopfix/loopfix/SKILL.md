@@ -57,7 +57,7 @@ Else `FAIL` or `INCOMPLETE` (mid-stop / skip / guess).
 ## Workflow
 
 ```
-- [ ] Step 0–1: Parse + init .loopfix/ ⛔ (+ agent-browser check)
+- [ ] Step 0–1: Parse + init .loopfix/ ⛔
 - [ ] Step 2: Knowledge + Scope
 - [ ] Step 3: Select/create Flow Probe ⛔
 - [ ] Step 4: Confirm ⚠️ (skip if --quick)
@@ -71,12 +71,11 @@ Else `FAIL` or `INCOMPLETE` (mid-stop / skip / guess).
 ## Step 0–1
 
 ```bash
-node <suite>/browser-orchestrator/scripts/check_agent_browser.js
 node <suite>/loopfix/scripts/init_loopfix.js
 # <suite> = skills/loopfix/
 ```
 
-Missing CLI → stop; install steps in `browser-orchestrator/references/agent-browser-dependency.md`.
+No agent-browser pre-check. If Step 5 returns `AGENT_BROWSER_MISSING`, relay JSON `install` to user (official skill + global CLI + `agent-browser install`).
 
 ## Step 2: Knowledge + Scope
 
@@ -106,6 +105,7 @@ node <suite>/browser-orchestrator/scripts/run_workflow.js <workflow-id> --cwd <p
 | `PASS` | Step 6 |
 | `FAIL` | Step 6 Failure Router |
 | `UNKNOWN_ACTION` | Ask → `.loopfix/browser/actions/` → re-run |
+| `AGENT_BROWSER_MISSING` | Relay `install` from JSON; retry after user installs |
 
 Load `references/evidence-format.md` for attribution merge.  
 Ad-hoc `console`/`network` only in Step 6 — load `references/agent-browser-cli.md`.

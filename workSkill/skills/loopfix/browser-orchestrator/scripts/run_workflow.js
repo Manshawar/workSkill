@@ -59,46 +59,51 @@ function findLoopfixSkillDir() {
   return null;
 }
 
-function findCheckScript() {
-  const candidates = [
-    path.resolve(__dirname, "check_agent_browser.js"),
-    path.resolve(__dirname, "..", "scripts", "check_agent_browser.js"),
-  ];
-  for (const c of candidates) {
-    if (fs.existsSync(c)) return c;
-  }
-  return null;
+/** Returned in JSON when spawn fails — AI installs on demand, no pre-check script. */
+const AGENT_BROWSER_INSTALL = {
+  skill: "npx skills add vercel-labs/agent-browser",
+  cli: "npm install -g agent-browser",
+  chrome: "agent-browser install",
+};
+
+function agentBrowserMissing(res) {
+  if (!res || !res.error) return false;
+  const msg = String(res.error.message || res.error);
+  return res.error.code === "ENOENT" || /spawn agent-browser/i.test(msg);
 }
 
-function requireAgentBrowser() {
-  const check = findCheckScript();
-  if (!check) return;
-  try {
-    execSync(`node "${check}" --json`, { stdio: "pipe", encoding: "utf8" });
-  } catch (e) {
-    const out = e.stdout || e.stderr || "";
-    try {
-      const j = JSON.parse(String(out).trim() || "{}");
-      console.log(JSON.stringify({ ok: false, status: "AGENT_BROWSER_MISSING", ...j }, null, 2));
-    } catch {
-      console.log(
-        JSON.stringify(
-          {
-            ok: false,
-            status: "AGENT_BROWSER_MISSING",
-            install: {
-              skill: "npx skills add vercel-labs/agent-browser",
-              cli: "npm install -g agent-browser",
-              chrome: "agent-browser install",
-            },
-          },
-          null,
-          2
-        )
-      );
-    }
-    process.exit(1);
-  }
+function exitAgentBrowserMissing(ctx) {
+  const ended = new Date().toISOString();
+  const evidence = {
+    run_id: ctx.rid,
+    workflow: ctx.workflowId,
+    workflow_path: ctx.workflowPath,
+    status: "AGENT_BROWSER_MISSING",
+    started_at: ctx.started,
+    ended_at: ended,
+    session: ctx.browser.session,
+    steps: [],
+    errors: ["agent-browser CLI not found"],
+    install: AGENT_BROWSER_INSTALL,
+    unknown_actions: [],
+    expect_failures: [],
+  };
+  writeEvidence(ctx.runDir, evidence);
+  console.log(
+    JSON.stringify(
+      {
+        ok: false,
+        status: "AGENT_BROWSER_MISSING",
+        message: "agent-browser CLI not found. Install before browser execution.",
+        install: AGENT_BROWSER_INSTALL,
+        run_id: ctx.rid,
+        evidence: path.join(ctx.runDir, "evidence.json"),
+      },
+      null,
+      2
+    )
+  );
+  process.exit(2);
 }
 
 /** Minimal YAML subset → JS (maps/lists/scalars). Good enough for workflow/action files. */
@@ -579,7 +584,6 @@ function main() {
     process.exit(args.help ? 0 : 1);
   }
 
-  if (!args.dryRun) requireAgentBrowser();
   const projectRoot = findProjectRoot(args.cwd);
   const actionsRoot = path.join(projectRoot, ".loopfix", "browser", "actions");
   const runsRoot = path.join(projectRoot, ".loopfix", "runs");
@@ -718,6 +722,14 @@ function main() {
   }
 
   const started = new Date().toISOString();
+  const missingCtx = {
+    rid,
+    workflowId,
+    workflowPath: path.relative(projectRoot, wfPath),
+    runDir,
+    browser,
+    started,
+  };
 
   if (args.noBail) {
     // S2: per-step execution — keep PASS/FAIL for each step
@@ -734,6 +746,7 @@ function main() {
         continue;
       }
       const res = runAgentBrowser(strings, true);
+      if (agentBrowserMissing(res)) exitAgentBrowserMissing(missingCtx);
       const errText = scrubNoise(
         res.error ? String(res.error.message || res.error) : res.stderr || res.stdout || ""
       );
@@ -757,6 +770,7 @@ function main() {
       for (const cmd of p.commands) batchArgs.push(cmdToBatchString(cmd));
     }
     const res = runAgentBrowser(batchArgs, true);
+    if (agentBrowserMissing(res)) exitAgentBrowserMissing(missingCtx);
     const rawErr = res.error
       ? String(res.error.message || res.error)
       : res.status !== 0

@@ -29,6 +29,7 @@ CLI detail: `references/agent-browser-cli.md`.
 | `APPLICATION_ERROR` | App logic/UI state wrong | App code |
 | `API_ERROR` | Request/response/contract bad | API / client call sites |
 | `BROWSER_ERROR` | Tool/session/CDP/env | Browser env / retry headed |
+| `AGENT_BROWSER_MISSING` | CLI not installed (`spawn ENOENT`) | Relay `install` from orchestrator JSON; retry after user installs |
 | `ACTION_ERROR` | Wrong/missing Action, stale ref, locator | `.loopfix/browser/actions` |
 | `UNKNOWN` | Cannot classify yet | Gather more Evidence; ask user |
 
