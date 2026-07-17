@@ -127,6 +127,13 @@ function main() {
         headed,
         flags,
         open_example: `agent-browser ${flags} open <url>`,
+        relay_login: `agent-browser ${flags} open <login-url>   # login once HERE — same session as run_workflow.js`,
+        session_explainer: {
+          shared_with: "All agent-browser calls using the same --session (or AGENT_BROWSER_SESSION) + this project worktree",
+          isolated_from: "Manual sessions with different names (e.g. loopfix-debug-1). Cookies do NOT cross sessions.",
+          how_to_debug_same_session: `export AGENT_BROWSER_SESSION=${JSON.stringify(session)}; agent-browser --session \"$AGENT_BROWSER_SESSION\" --restore --headed open <url>`,
+          tip: "Do not invent a debug session name — reuse open_example / relay_login flags from this JSON.",
+        },
         env,
         note: "Reuse these flags in every agent-browser call in this project. Do not close --all on shared session.",
       },

@@ -85,7 +85,8 @@ Need-based `knowledge/` read. Load `references/validation-scope.md`. Success = b
 ## Step 3: Flow Probe ⛔
 
 Load `references/probe-format.md` + `references/registry-format.md`.  
-`browser/index.yaml` → one Probe (verified > ready > draft). No match → write draft + index now. File on disk before leave.
+First time: also load `references/probe-vs-workflow.md` (which dir / which keys).  
+`browser/index.yaml` → one Probe (verified > partial > ready > draft). No match → write draft + index now. File on disk before leave.
 
 ## Step 4: Confirm ⚠️
 
@@ -94,8 +95,11 @@ Unless `--quick`: flow id, path, status, phase counts, fixes allowed. No browser
 ## Step 5: Orchestrator ⚠️
 
 ```bash
-node <suite>/browser-orchestrator/scripts/run_workflow.js <workflow-id> --cwd <project> [--dry-run] [--base-url <url>]
+node <suite>/browser-orchestrator/scripts/run_workflow.js <workflow-id> --cwd <project> [--dry-run] [--base-url <url>] [--no-bail]
 ```
+
+- Default: `batch --bail` (fast). SPA + loading mask: add `wait.selector_gone` in workflow; use `--no-bail` to keep per-step PASS/FAIL when diagnosing.
+- Dry-run writes Evidence with `status: DRY_RUN` + `plan`.
 
 | Status | Next |
 |--------|------|

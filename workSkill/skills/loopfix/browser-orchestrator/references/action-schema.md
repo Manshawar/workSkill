@@ -4,7 +4,7 @@ Path: `.loopfix/browser/actions/<family>/<name>.yaml`
 
 Action = reusable **how to operate** a control family. Project-local. Never in this skill.
 
-## File
+## Native form (preferred)
 
 ```yaml
 id: ui.dialog.open
@@ -14,32 +14,52 @@ params:
   title: string?
 
 steps:
-  - action:
+  - id: click-open
+    action:
       type: click
     target:
       role: button
       name: "{{title}}"
-  - action:
+  - id: after-open
+    action:
       type: snapshot
 ```
 
-`use: ui.dialog.open` in a Workflow expands these steps (param interpolate `{{name}}`).
+`use: ui.dialog.open` expands these steps (param interpolate `{{name}}`).
 
-## Families (suggested dirs)
+## when/do form (compat)
+
+Legacy / intent-routed actions:
+
+```yaml
+id: components.range-org-staff-input
+params:
+  intent: open | confirm
+
+steps:
+  - when: { intent: open }
+    do:
+      - action: click
+        target: { role: button, name: "选择人员" }
+      - action:
+          type: snapshot
+  - when: { intent: confirm }
+    do:
+      - action: click
+        target: { text: "确定" }
+```
+
+Orchestrator matches `when` to workflow `params` (e.g. `params.intent: open`), expands matching `do` only.
+
+## Families
 
 ```
 actions/
   common/
-  ui/           # generic patterns (dialog, form) — framework-agnostic names
-  components/   # project-specific widgets
+  ui/
+  components/
 ```
-
-No Vue/React binding in skill docs — project may name folders freely.
 
 ## UNKNOWN_ACTION
 
-If Workflow `use:` has no file, or target cannot resolve:
-
-- Orchestrator status: `UNKNOWN_ACTION`
-- Do not eval / random click / skip
-- User teaches → write Action under `browser/actions/` → re-run
+Missing file / unresolved target → status `UNKNOWN_ACTION`. No eval/guess/skip. User teaches → write Action → re-run.

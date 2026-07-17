@@ -144,6 +144,14 @@ function main() {
         status: status.exists ? "ready" : "incomplete",
         missing: status.missing,
         actions,
+        tips: {
+          probe_vs_workflow:
+            "Probe = why (browser/probes + browser/index.yaml flows:). Workflow = how (browser/workflows + workflows/index.yaml). Suite skill: references/probe-vs-workflow.md",
+          session:
+            "node <loopfix>/scripts/browser_env.js --cwd <project> → reuse session/relay_login; do not invent loopfix-debug-*",
+          mask_wait:
+            "SPA v-loading: wait params.selector_gone: .el-loading-mask before click; diagnose with run_workflow --no-bail",
+        },
       },
       null,
       2

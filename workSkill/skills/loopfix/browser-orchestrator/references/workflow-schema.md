@@ -68,11 +68,31 @@ steps:
 | `fill` | Clear+fill | `fill` / `find … fill` |
 | `type` | Type | `type` |
 | `select` | Select | `select` |
-| `wait` | Wait | `wait …` |
+| `wait` | Wait | `wait …` (see below) |
 | `snapshot` | A11y tree | `snapshot -i` |
 | `screenshot` | Sparse capture | `screenshot <path>` |
 
 Prefer `action.use: <family>.<name>` → expand from `browser/actions/`.
+
+## Wait params (mask-aware)
+
+```yaml
+# After list fetch / route — wait loading overlay gone (Element Plus etc.)
+- id: wait-list
+  action:
+    type: wait
+  params:
+    selector_gone: ".el-loading-mask"
+# aliases: mask_gone, or selector + state: hidden
+```
+
+Maps to: `agent-browser wait "<sel>" --state hidden`
+
+Also: `load`, `ms`, `text`, `fn`, `selector` (appear).
+
+Inline flow maps are supported: `action: { type: wait }` / `params: { selector_gone: ".el-loading-mask" }`.
+
+**Before click after getList / route change:** always `selector_gone` for known masks — prevents batch race.
 
 ## Target (no brittle CSS)
 

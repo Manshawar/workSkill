@@ -14,9 +14,18 @@ Register in `browser/index.yaml` → `references/registry-format.md`.
 | Status | Bar |
 |--------|-----|
 | `draft` | Incomplete OK; no formal Flow PASS |
-| `ready` | Phases/steps resolvable via Action/native; or explicit `skip_reason` + `skip_needs` |
-| `verified` | Flow PASS Evidence once |
+| `ready` | Steps resolvable via Action/native (or `skip_reason` + `skip_needs`). **Not** proof that batch PASS |
+| `partial` | Manual and/or headed OK; batch blocked by known gap (e.g. mask wait). Set `partial_pass_evidence` |
+| `verified` | Full Flow PASS Evidence once (orchestrator batch) |
 | `deprecated` | Do not select |
+
+```yaml
+status: partial
+partial_pass_evidence: runs/20260717-vd-main-…/evidence.json
+partial_reason: "batch blocked on v-loading mask; wait selector_gone pending"
+```
+
+`partial` **may** still feed `knowledge/patterns/` (see knowledge-rules). Prefer promote to `verified` after S1-style waits land.
 
 ## Schema (phase-oriented)
 

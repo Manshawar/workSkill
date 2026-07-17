@@ -25,9 +25,12 @@ knowledge/
 
 ```
 knowledge/patterns/loading-stuck.md
+knowledge/patterns/vloading-mask-race.md
 knowledge/patterns/promise-error.md
 knowledge/patterns/state-not-refresh.md
 ```
+
+`status: partial` probes **can** contribute patterns (e.g. mask race) — move ad-hoc `knowledge/components/*-vloading.md` into `patterns/` once abstracted.
 
 Template:
 

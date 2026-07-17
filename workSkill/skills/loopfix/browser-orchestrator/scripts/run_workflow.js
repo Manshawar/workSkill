@@ -4,7 +4,7 @@
  * LLM must not step-click — this script owns the run.
  *
  * Usage:
- *   node run_workflow.js <workflow-id|path> [--cwd <project>] [--dry-run] [--base-url <url>]
+ *   node run_workflow.js <workflow-id|path> [--cwd <project>] [--dry-run] [--base-url <url>] [--no-bail]
  */
 
 const fs = require("fs");
@@ -12,12 +12,19 @@ const path = require("path");
 const { execSync, spawnSync } = require("child_process");
 
 function parseArgs(argv) {
-  const out = { cwd: process.cwd(), dryRun: false, baseUrl: null, workflow: null };
+  const out = {
+    cwd: process.cwd(),
+    dryRun: false,
+    baseUrl: null,
+    workflow: null,
+    noBail: false,
+  };
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--cwd") out.cwd = path.resolve(argv[++i] || "");
     else if (a === "--dry-run") out.dryRun = true;
     else if (a === "--base-url") out.baseUrl = argv[++i];
+    else if (a === "--no-bail") out.noBail = true;
     else if (a === "--help" || a === "-h") out.help = true;
     else if (!a.startsWith("-") && !out.workflow) out.workflow = a;
   }
@@ -104,15 +111,86 @@ function parseYaml(text) {
     return m ? m[0].length : 0;
   }
 
+  /** Split flow map/seq inner on top-level commas (respect quotes + nested {} []). */
+  function splitFlowItems(inner) {
+    const items = [];
+    let cur = "";
+    let depth = 0;
+    let quote = null;
+    for (let j = 0; j < inner.length; j++) {
+      const ch = inner[j];
+      if (quote) {
+        cur += ch;
+        if (ch === "\\" && quote === '"') {
+          cur += inner[++j] || "";
+          continue;
+        }
+        if (ch === quote) quote = null;
+        continue;
+      }
+      if (ch === '"' || ch === "'") {
+        quote = ch;
+        cur += ch;
+        continue;
+      }
+      if (ch === "{" || ch === "[") {
+        depth++;
+        cur += ch;
+        continue;
+      }
+      if (ch === "}" || ch === "]") {
+        depth--;
+        cur += ch;
+        continue;
+      }
+      if (ch === "," && depth === 0) {
+        items.push(cur.trim());
+        cur = "";
+        continue;
+      }
+      cur += ch;
+    }
+    if (cur.trim()) items.push(cur.trim());
+    return items;
+  }
+
+  function parseFlowCollection(s) {
+    const t = s.trim();
+    if (t.startsWith("{") && t.endsWith("}")) {
+      const obj = {};
+      for (const item of splitFlowItems(t.slice(1, -1))) {
+        if (!item) continue;
+        const ci = item.indexOf(":");
+        if (ci < 0) continue;
+        const k = item.slice(0, ci).trim();
+        const v = item.slice(ci + 1).trim();
+        obj[k] = parseValue(v);
+      }
+      return obj;
+    }
+    if (t.startsWith("[") && t.endsWith("]")) {
+      return splitFlowItems(t.slice(1, -1)).map((x) => parseValue(x));
+    }
+    return t;
+  }
+
   function parseValue(raw) {
-    const s = raw.trim();
+    let s = raw.trim();
     if (s === "" || s === "null" || s === "~") return null;
     if (s === "true") return true;
     if (s === "false") return false;
     if (/^-?\d+(\.\d+)?$/.test(s)) return Number(s);
     if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'")))
       return s.slice(1, -1);
-    return s.replace(/#.*$/, "").trim();
+    // Inline flow maps/seqs: { type: open } / [a, b]
+    if (s.startsWith("{") || s.startsWith("[")) {
+      const closed =
+        (s.startsWith("{") && s.endsWith("}")) || (s.startsWith("[") && s.endsWith("]"));
+      if (closed) return parseFlowCollection(s);
+    }
+    // strip unquoted trailing comment
+    if (!s.includes('"') && !s.includes("'")) s = s.replace(/\s+#.*$/, "").trim();
+    return s;
   }
 
   function parseBlock(minIndent) {
@@ -253,6 +331,79 @@ function interpolate(obj, params) {
   return obj;
 }
 
+/** Match action when: { intent: open } against workflow params */
+function whenMatches(when, params) {
+  if (when == null) return true;
+  if (typeof when !== "object") return true;
+  for (const [k, v] of Object.entries(when)) {
+    const pv = params && params[k];
+    if (pv == null) continue; // unspecified param → allow branch
+    if (String(pv) !== String(v)) return false;
+  }
+  return true;
+}
+
+/** Normalize do-item to { action: { type }, target?, params? } */
+function normalizeDoItem(d, fallbackId) {
+  if (!d || typeof d !== "object") return null;
+  if (typeof d.action === "string") {
+    return {
+      id: d.id || fallbackId,
+      action: { type: d.action },
+      target: d.target,
+      params: d.params || {},
+      expect: d.expect,
+    };
+  }
+  if (d.action && typeof d.action === "object") {
+    return {
+      id: d.id || fallbackId,
+      action: d.action.type ? d.action : { type: d.action.type || d.type, ...d.action },
+      target: d.target,
+      params: d.params || {},
+      expect: d.expect,
+    };
+  }
+  if (d.type) {
+    return {
+      id: d.id || fallbackId,
+      action: { type: d.type },
+      target: d.target,
+      params: d.params || {},
+      expect: d.expect,
+    };
+  }
+  return { id: fallbackId, ...d };
+}
+
+/**
+ * Expand Action file steps. Supports:
+ * - native: steps: [{ action: { type }, target }]
+ * - when/do: steps: [{ when: { intent: open }, do: [...] }]  (S7)
+ */
+function actionDefToSteps(def, mergedParams) {
+  let raw = def.steps;
+  if (!raw || !raw.length) {
+    if (def.when || def.do) raw = [{ when: def.when, do: def.do }];
+    else return [];
+  }
+  const out = [];
+  let i = 0;
+  for (const s of raw) {
+    if (s && (s.do != null || s.when != null)) {
+      if (!whenMatches(s.when, mergedParams)) continue;
+      const dos = Array.isArray(s.do) ? s.do : s.do ? [s.do] : [];
+      for (const d of dos) {
+        const n = normalizeDoItem(d, s.id || `step-${i++}`);
+        if (n) out.push(n);
+      }
+    } else {
+      out.push(s);
+    }
+  }
+  return out;
+}
+
 function expandSteps(steps, actionsRoot, params, unknown) {
   const out = [];
   for (const step of steps || []) {
@@ -266,7 +417,7 @@ function expandSteps(steps, actionsRoot, params, unknown) {
       }
       const def = readYamlFile(file);
       const mergedParams = { ...(params || {}), ...(step.params || {}) };
-      const inner = interpolate(def.steps || [], mergedParams);
+      const inner = interpolate(actionDefToSteps(def, mergedParams), mergedParams);
       for (const s of expandSteps(inner, actionsRoot, mergedParams, unknown)) {
         out.push({
           ...s,
@@ -275,7 +426,12 @@ function expandSteps(steps, actionsRoot, params, unknown) {
         });
       }
     } else {
-      out.push(interpolate({ ...step, params: { ...params, ...step.params } }, { ...params, ...step.params }));
+      out.push(
+        interpolate(
+          { ...step, params: { ...params, ...step.params } },
+          { ...params, ...step.params }
+        )
+      );
     }
   }
   return out;
@@ -309,10 +465,25 @@ function stepToCommands(step, ctx) {
     return cmds;
   }
   if (type === "wait") {
-    if (params.load) cmds.push(["wait", "--load", String(params.load)]);
-    else if (params.ms) cmds.push(["wait", String(params.ms)]);
-    else if (params.text) cmds.push(["wait", "--text", String(params.text)]);
-    else if (params.selector) cmds.push(["wait", String(params.selector)]);
+    // S1: mask-aware — wait until selector gone (loading overlay)
+    const gone =
+      params.selector_gone ||
+      params.mask_gone ||
+      params.hidden ||
+      (params.state === "hidden" && params.selector);
+    if (gone) {
+      cmds.push(["wait", String(gone), "--state", "hidden"]);
+    } else if (params.load) {
+      cmds.push(["wait", "--load", String(params.load)]);
+    } else if (params.ms) {
+      cmds.push(["wait", String(params.ms)]);
+    } else if (params.text) {
+      cmds.push(["wait", "--text", String(params.text)]);
+    } else if (params.fn) {
+      cmds.push(["wait", "--fn", String(params.fn)]);
+    } else if (params.selector) {
+      cmds.push(["wait", String(params.selector)]);
+    }
     return cmds;
   }
   if (type === "snapshot") {
@@ -404,7 +575,7 @@ function writeEvidence(runDir, evidence) {
 function main() {
   const args = parseArgs(process.argv);
   if (args.help || !args.workflow) {
-    console.log("Usage: node run_workflow.js <workflow-id|path> [--cwd <project>] [--dry-run] [--base-url <url>]");
+    console.log("Usage: node run_workflow.js <workflow-id|path> [--cwd <project>] [--dry-run] [--base-url <url>] [--no-bail]");
     process.exit(args.help ? 0 : 1);
   }
 
@@ -477,59 +648,141 @@ function main() {
   }
 
   if (args.dryRun) {
-    console.log(JSON.stringify({ ok: true, status: "DRY_RUN", workflow: workflowId, session: browser.session, plan }, null, 2));
+    const started = new Date().toISOString();
+    const evidence = {
+      run_id: rid,
+      workflow: workflowId,
+      workflow_path: path.relative(projectRoot, wfPath),
+      status: "DRY_RUN",
+      started_at: started,
+      ended_at: started,
+      session: browser.session,
+      plan,
+      steps: plan.map((p) => ({
+        id: p.step_id,
+        status: "PLANNED",
+        action: "",
+        detail: `${(p.commands || []).length} cmd(s)`,
+      })),
+      unknown_actions: [],
+      errors: [],
+      expect_failures: [],
+      batch_command_count: plan.reduce((n, p) => n + (p.commands || []).length, 0),
+    };
+    writeEvidence(runDir, evidence);
+    console.log(
+      JSON.stringify(
+        {
+          ok: true,
+          status: "DRY_RUN",
+          workflow: workflowId,
+          session: browser.session,
+          run_id: rid,
+          evidence: path.join(runDir, "evidence.json"),
+          plan,
+        },
+        null,
+        2
+      )
+    );
     process.exit(0);
   }
 
   const stepResults = [];
   const expectFailures = [];
-  const errors = [];
+  let errors = [];
   let status = "PASS";
 
-  // Flatten to batch strings (agent-browser batch takes quoted command strings)
-  const batchArgs = [];
-  for (const p of plan) {
-    for (const cmd of p.commands) {
-      // join for batch string form
-      batchArgs.push(cmd.map((c) => (/\s/.test(c) ? JSON.stringify(c) : c)).join(" "));
-    }
+  function cmdToBatchString(cmd) {
+    return cmd.map((c) => (/\s/.test(String(c)) ? JSON.stringify(String(c)) : String(c))).join(" ");
   }
 
-  const abArgs = [...browser.flags, "batch", "--bail", ...batchArgs];
-  const started = new Date().toISOString();
-  const res = spawnSync("agent-browser", abArgs, {
-    env: browser.env,
-    encoding: "utf8",
-    cwd: projectRoot,
-  });
-
-  const ended = new Date().toISOString();
-  if (res.error) {
-    status = "FAIL";
-    errors.push(String(res.error.message || res.error));
-  } else if (res.status !== 0) {
-    status = "FAIL";
-    errors.push((res.stderr || res.stdout || `exit ${res.status}`).slice(0, 2000));
+  function scrubNoise(text) {
+    // S5: drop restore:missing spam
+    return String(text || "")
+      .split("\n")
+      .filter((l) => !/restore:\s*missing/i.test(l))
+      .join("\n")
+      .trim();
   }
 
-  // MVP: mark all planned steps PASS if batch ok; else last incomplete
-  for (let i = 0; i < plan.length; i++) {
-    const p = plan[i];
-    const ok = status === "PASS";
-    stepResults.push({
-      id: p.step_id,
-      status: ok ? "PASS" : i === 0 ? "FAIL" : "INCOMPLETE",
-      action: (expanded[i] && (expanded[i].action?.type || expanded[i].action?.use)) || "",
-      detail: "",
+  function runAgentBrowser(batchStrings, useBail) {
+    const abArgs = [...browser.flags, "batch"];
+    if (useBail) abArgs.push("--bail");
+    abArgs.push(...batchStrings);
+    return spawnSync("agent-browser", abArgs, {
+      env: browser.env,
+      encoding: "utf8",
+      cwd: projectRoot,
     });
   }
-  if (status !== "PASS") {
-    for (const s of stepResults) {
-      if (s.status === "INCOMPLETE") s.status = "SKIP";
+
+  const started = new Date().toISOString();
+
+  if (args.noBail) {
+    // S2: per-step execution — keep PASS/FAIL for each step
+    for (let i = 0; i < plan.length; i++) {
+      const p = plan[i];
+      const strings = (p.commands || []).map(cmdToBatchString);
+      if (!strings.length) {
+        stepResults.push({
+          id: p.step_id,
+          status: "SKIP",
+          action: (expanded[i] && (expanded[i].action?.type || expanded[i].action?.use)) || "",
+          detail: "no commands",
+        });
+        continue;
+      }
+      const res = runAgentBrowser(strings, true);
+      const errText = scrubNoise(
+        res.error ? String(res.error.message || res.error) : res.stderr || res.stdout || ""
+      );
+      const ok = !res.error && res.status === 0;
+      stepResults.push({
+        id: p.step_id,
+        status: ok ? "PASS" : "FAIL",
+        action: (expanded[i] && (expanded[i].action?.type || expanded[i].action?.use)) || "",
+        detail: ok ? "" : errText.slice(0, 500),
+      });
+      if (!ok) {
+        status = "FAIL";
+        if (errText) errors.push(`step ${p.step_id}:\n${errText.slice(0, 1500)}`);
+        // continue remaining steps (no-bail semantics)
+      }
     }
-    if (stepResults.length) stepResults[stepResults.length - 1].status = "FAIL";
-    status = status === "PASS" ? "PASS" : "FAIL";
+  } else {
+    // Default: single batch --bail (fast path)
+    const batchArgs = [];
+    for (const p of plan) {
+      for (const cmd of p.commands) batchArgs.push(cmdToBatchString(cmd));
+    }
+    const res = runAgentBrowser(batchArgs, true);
+    const rawErr = res.error
+      ? String(res.error.message || res.error)
+      : res.status !== 0
+        ? res.stderr || res.stdout || `exit ${res.status}`
+        : "";
+    const errText = scrubNoise(rawErr);
+    if (res.error || res.status !== 0) {
+      status = "FAIL";
+      if (errText) errors.push(errText.slice(0, 2000));
+    }
+    for (let i = 0; i < plan.length; i++) {
+      const p = plan[i];
+      const ok = status === "PASS";
+      stepResults.push({
+        id: p.step_id,
+        status: ok ? "PASS" : "SKIP",
+        action: (expanded[i] && (expanded[i].action?.type || expanded[i].action?.use)) || "",
+        detail: "",
+      });
+    }
+    if (status !== "PASS" && stepResults.length) {
+      stepResults[stepResults.length - 1].status = "FAIL";
+    }
   }
+
+  const ended = new Date().toISOString();
 
   // Light post checks: console on failure
   if (status !== "PASS") {
@@ -538,11 +791,14 @@ function main() {
         env: browser.env,
         encoding: "utf8",
       });
-      if (c.stdout) errors.push("console:\n" + c.stdout.slice(0, 1500));
+      const cons = scrubNoise(c.stdout || "");
+      if (cons) errors.push("console:\n" + cons.slice(0, 1500));
     } catch {
       /* ignore */
     }
   }
+
+  errors = errors.map(scrubNoise).filter(Boolean);
 
   const evidence = {
     run_id: rid,
@@ -552,11 +808,14 @@ function main() {
     started_at: started,
     ended_at: ended,
     session: browser.session,
+    session_explainer: browser.raw && browser.raw.session_explainer,
+    no_bail: !!args.noBail,
+    plan,
     steps: stepResults,
     unknown_actions: [],
     errors,
     expect_failures: expectFailures,
-    batch_command_count: batchArgs.length,
+    batch_command_count: plan.reduce((n, p) => n + (p.commands || []).length, 0),
   };
   writeEvidence(runDir, evidence);
 
@@ -569,6 +828,7 @@ function main() {
         evidence: path.join(runDir, "evidence.json"),
         report: path.join(runDir, "report.md"),
         session: browser.session,
+        no_bail: !!args.noBail,
       },
       null,
       2

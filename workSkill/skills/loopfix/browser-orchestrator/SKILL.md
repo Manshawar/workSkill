@@ -1,7 +1,7 @@
 ---
 name: browser-orchestrator
 description: "LoopFix browser orchestration: load workflow → resolve Action → batch official agent-browser → Evidence. Not a browser driver. Triggers: run workflow, execute workflow, orchestrate browser, browser-orchestrator, batch browser flow, 执行工作流, 跑 workflow, 编排浏览器. LLM must NOT click step-by-step. Calls agent-browser only."
-argument-hint: "<workflow-id|path> [--cwd <project>] [--dry-run] [--base-url <url>]"
+argument-hint: "<workflow-id|path> [--cwd <project>] [--dry-run] [--base-url <url>] [--no-bail]"
 allowed-tools:
   - Bash(node **/skills/loopfix/browser-orchestrator/scripts/*)
   - Bash(node **/skills/loopfix/loopfix/scripts/*)
@@ -31,7 +31,7 @@ Atoms = official `agent-browser` only — `references/agent-browser-dependency.m
 | `<workflow-id\|path>` | From `browser/workflows/index.yaml` or file path |
 | `--cwd <project>` | Project with `.loopfix/` |
 | `--dry-run` | Plan only |
-| `--base-url <url>` | Override base_url |
+| `--no-bail` | Run step-by-step; keep per-step PASS/FAIL (SPA / mask debug) |
 
 ## Workflow
 
@@ -55,7 +55,7 @@ Session: `run_workflow.js` calls loopfix `browser_env.js` (sticky `--session --r
 ## Step 1–4
 
 ```bash
-node <this_skill>/scripts/run_workflow.js <workflow-id> --cwd <project> [--dry-run] [--base-url <url>]
+node <this_skill>/scripts/run_workflow.js <workflow-id> --cwd <project> [--dry-run] [--base-url <url>] [--no-bail]
 ```
 
 Script: load workflow → expand Action → `agent-browser batch` → write `.loopfix/runs/<id>/`.  
