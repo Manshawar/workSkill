@@ -116,12 +116,18 @@ Before ops: `agent-browser skills get core` (or `--full`).
 
 Project conventions: load `.loopfix/references/agent-browser.md`.
 
+**Perception budget (token-critical):**
+
+- Default sense: `snapshot` (a11y tree + refs). Drive clicks/fills from refs.
+- Screenshot: **only when necessary** — see `references/evidence-format.md` (fail / visual suspicion / optional final archive).
+- Do **not** screenshot every step. Do **not** re-read screenshot images into context if snapshot already explains the failure — prefer path in `evidence.json` for humans.
+
 Run Probe; collect Evidence into:
 
 ```
 .loopfix/runs/<YYYY-MM-DD>-<slug>/
   evidence.json
-  screenshot/
+  screenshot/     # may be empty on clean PASS
   report.md
 ```
 
@@ -131,7 +137,7 @@ Schema: `references/evidence-format.md`. **Evidence ≠ Knowledge** — facts on
 
 Ask:
 
-- Which steps failed? What do screenshot / console / network show?
+- Which steps failed? What do **snapshot** / console / network show? (screenshot only if taken)
 - App bug, env issue, or stale Probe?
 - One-sentence root cause? (none → block Step 7)
 
@@ -174,12 +180,14 @@ On PASS:
 - Replacing agent-browser with Playwright/Puppeteer/built-in browser tools
 - Headless by default (unless user explicitly asks)
 - Putting AI assets outside `.loopfix/`
+- Screenshot every step / load every PNG into context (burns tokens)
 
 ## Pre-Delivery Checklist
 
 - [ ] `.loopfix/` has config.yaml + references/agent-browser.md + probes/drafts/runs
 - [ ] Used `agent-browser ... --headed`
-- [ ] `runs/<slug>/` has evidence.json + ≥1 screenshot + report.md
+- [ ] `runs/<slug>/` has evidence.json + report.md; screenshots only if fail/visual/archive needed
+- [ ] Steps driven by snapshot refs, not by screenshots
 - [ ] FAIL+fixed → re-ran same Probe
 - [ ] On PASS, considered Probe persist; Knowledge not page-level filename
 - [ ] No Evidence-free "should be fine" claims

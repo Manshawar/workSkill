@@ -26,7 +26,8 @@ steps:
   - id: create
     action: click
     target: "Create"
-  # actions: open | click | fill | type | select | wait | snapshot | screenshot
+  # actions: open | click | fill | type | select | wait | snapshot
+  # screenshot: optional — only on fail / visual suspicion (not a default step)
 
 expect:
   - type: no_console_errors

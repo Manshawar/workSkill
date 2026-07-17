@@ -10,8 +10,6 @@ steps:
     url: /login
   - id: snapshot
     action: snapshot
-  - id: screenshot
-    action: screenshot
 
 expect:
   - type: no_console_errors

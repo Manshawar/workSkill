@@ -8,9 +8,29 @@ Evidence = facts. Not Knowledge.
 
 ```
 evidence.json
-screenshot/
+screenshot/          # optional; often empty on clean PASS
 report.md
 ```
+
+## Primary signal: snapshot (not screenshot)
+
+| Signal | When | Token cost |
+|--------|------|------------|
+| `snapshot` | **Every** interactive step | Low (text) |
+| console / network | On errors or end of run | Low |
+| `screenshot` | **Only if necessary** (below) | High if read into context |
+
+### Screenshot only when
+
+1. **FAIL** — capture the failing step (disk path in evidence; read image only if snapshot cannot explain)
+2. **Visual suspicion** — layout/canvas/style/truncation that a11y tree cannot show
+3. **Optional final archive** — one end-state PNG for humans, no need to reload into the model
+
+### Do not
+
+- Screenshot every step by default
+- Treat screenshot as the main navigation sense
+- Re-ingest all PNGs into context when `evidence.json` + snapshot text already suffice
 
 ## evidence.json
 
@@ -29,7 +49,8 @@ report.md
       "action": "open",
       "url": "http://localhost:3000/users",
       "ok": true,
-      "screenshot": "screenshot/01-open.png",
+      "snapshot_note": "Users table visible",
+      "screenshot": null,
       "notes": ""
     }
   ],
@@ -40,13 +61,15 @@ report.md
 }
 ```
 
+`screenshot` may be `null` or omitted when unused.
+
 ## Required
 
 - URL / steps
 - console errors (if any)
 - network errors (if any)
-- screenshots (key fail steps + final state)
-- final state
+- final state (text from snapshot is enough on PASS)
+- screenshots **only** per rules above — not mandatory on PASS
 
 ## report.md
 
