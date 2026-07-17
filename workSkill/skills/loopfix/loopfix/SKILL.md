@@ -108,7 +108,7 @@ node <suite>/browser-orchestrator/scripts/run_workflow.js <workflow-id> --cwd <p
 | `AGENT_BROWSER_MISSING` | Relay `install` from JSON; retry after user installs |
 
 Load `references/evidence-format.md` for attribution merge.  
-Ad-hoc `console`/`network` only in Step 6 — load `references/agent-browser-cli.md`.
+Ad-hoc `agent-browser` only in Step 6 — load `references/agent-browser-cli.md`; sticky session via `browser_env.js` (see `.loopfix/references/agent-browser.md`).
 
 ## Step 6: Failure Router
 

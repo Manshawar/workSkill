@@ -5,13 +5,10 @@ version: 2
 browser:
   tool: agent-browser
   headed: true
-  # Sticky session across Cursor chats/windows — avoids re-login + token burn
-  # session: auto  → loopfix-<project> via `agent-browser session id --scope worktree`
-  # session: my-name → use exact session id
+  # session: auto  → claude-<worktree-hash> via agent-browser session id --scope worktree --prefix claude
+  # session: my-name → exact session override
   session: auto
-  restore: true          # persist cookies/localStorage across daemon restarts
-  # Optional: pin profile dir instead of/in addition to restore
-  # profile: ~/.loopfix-profiles/myapp
+  restore: true
 
 validation:
   default_scope: full

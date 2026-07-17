@@ -41,8 +41,7 @@ Atoms = official `agent-browser` only. No pre-check — missing CLI surfaces as 
 - [ ] Step 3: return status to loopfix
 ```
 
-Session: inside `run_workflow.js` via loopfix `browser_env.js` (sticky `--session --restore`).  
-`AGENT_BROWSER_MISSING` → relay JSON `install` to user; do not maintain a local check script.
+Session: `run_workflow.js` → `browser_env.js`（`--prefix claude --restore --headed`，自动 sticky）。
 
 ## Step 1
 

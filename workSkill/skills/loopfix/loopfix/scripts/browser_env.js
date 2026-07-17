@@ -25,14 +25,6 @@ function parseArgs(argv) {
   return out;
 }
 
-function slug(s) {
-  return String(s)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 48) || "app";
-}
-
 function findLoopfixRoot(cwd) {
   let dir = path.resolve(cwd);
   for (;;) {
@@ -67,21 +59,19 @@ function readConfig(projectRoot) {
   return { browser };
 }
 
-function resolveSessionId(projectRoot, configured) {
+function resolveSessionId(configured) {
   if (configured && configured !== "auto") return String(configured);
 
-  // Prefer agent-browser stable worktree id when CLI available
   try {
-    const prefix = `loopfix-${slug(path.basename(projectRoot))}`;
-    const id = execSync(
-      `agent-browser session id --scope worktree --prefix ${prefix}`,
-      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }
-    ).trim();
+    const id = execSync(`agent-browser session id --scope worktree --prefix claude`, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
     if (id) return id;
   } catch {
-    /* fallback below */
+    /* CLI missing — fall through */
   }
-  return `loopfix-${slug(path.basename(projectRoot))}`;
+  return process.env.AGENT_BROWSER_SESSION || "default";
 }
 
 function main() {
@@ -95,7 +85,7 @@ function main() {
   const cfg = readConfig(projectRoot);
   const b = cfg.browser || {};
 
-  const session = resolveSessionId(projectRoot, b.session);
+  const session = resolveSessionId(b.session);
   const restore = b.restore !== false;
   const headed = b.headed !== false;
 
@@ -129,10 +119,10 @@ function main() {
         open_example: `agent-browser ${flags} open <url>`,
         relay_login: `agent-browser ${flags} open <login-url>   # login once HERE — same session as run_workflow.js`,
         session_explainer: {
-          shared_with: "All agent-browser calls using the same --session (or AGENT_BROWSER_SESSION) + this project worktree",
-          isolated_from: "Manual sessions with different names (e.g. loopfix-debug-1). Cookies do NOT cross sessions.",
+          rule: "Same session as agent-browser skill: session id --scope worktree --prefix claude",
+          shared_with: "All agent-browser calls with same --session in this worktree (loopfix, manual, any chat)",
+          isolated_from: "Different --session names or different git worktrees — cookies do NOT cross",
           how_to_debug_same_session: `export AGENT_BROWSER_SESSION=${JSON.stringify(session)}; agent-browser --session \"$AGENT_BROWSER_SESSION\" --restore --headed open <url>`,
-          tip: "Do not invent a debug session name — reuse open_example / relay_login flags from this JSON.",
         },
         env,
         note: "Reuse these flags in every agent-browser call in this project. Do not close --all on shared session.",

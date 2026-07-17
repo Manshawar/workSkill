@@ -2,11 +2,16 @@
 
 Load only when debugging a FAIL (Step 6). Full docs: `agent-browser skills get core [--full]`
 
-If `run_workflow.js` returns `AGENT_BROWSER_MISSING`, relay its `install` object — do not maintain a loopfix check script.
-
-After sticky session (`browser_env.js` / orchestrator):
+**Sticky session first** — reuse orchestrator session, don't cold-start:
 
 ```bash
+node <loopfix>/scripts/browser_env.js --cwd <project>   # → flags, session, relay_login
+# every ad-hoc command: agent-browser <flags from JSON> <cmd>
+```
+
+If `run_workflow.js` returns `AGENT_BROWSER_MISSING`, relay its `install` object.
+
+Debug commands (with sticky flags):
 agent-browser network requests --type xhr,fetch
 agent-browser network requests --status 4xx
 agent-browser console

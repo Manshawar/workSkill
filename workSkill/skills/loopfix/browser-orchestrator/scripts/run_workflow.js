@@ -533,8 +533,8 @@ function getBrowserEnv(projectRoot) {
   const loopfix = findLoopfixSkillDir();
   if (!loopfix) {
     return {
-      session: `loopfix-${path.basename(projectRoot)}`,
-      flags: [],
+      session: process.env.AGENT_BROWSER_SESSION || "default",
+      flags: ["--restore", "--headed"],
       env: { ...process.env },
     };
   }
