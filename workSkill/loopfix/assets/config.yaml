@@ -1,0 +1,17 @@
+# .loopfix project config (MVP)
+
+version: 1
+
+browser:
+  tool: agent-browser
+  headed: true          # required for debug; never default headless
+
+validation:
+  default_scope: full   # full | targeted
+  max_fix_rounds: 3
+
+paths:
+  probes: browser/probes
+  knowledge_drafts: knowledge/drafts
+  runs: runs
+  references: references

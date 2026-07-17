@@ -1,0 +1,19 @@
+name: example-login
+description: Example Probe (safe to delete). Open login and check form visibility.
+base_url: http://localhost:3000
+scope: targeted
+tags: [example, auth]
+
+steps:
+  - id: open
+    action: open
+    url: /login
+  - id: snapshot
+    action: snapshot
+  - id: screenshot
+    action: screenshot
+
+expect:
+  - type: no_console_errors
+  - type: visible
+    target: "Login"
