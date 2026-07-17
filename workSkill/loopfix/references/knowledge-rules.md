@@ -20,7 +20,7 @@ order-page-error.md
 Cross-ref:
 
 ```
-Flow → Probe → Pattern → Rule
+Probe Definition → Probe Execution → Evidence → Incident → Pattern → Rule
 ```
 
 ## MVP write path

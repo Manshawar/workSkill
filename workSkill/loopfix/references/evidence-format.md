@@ -1,6 +1,12 @@
 # Evidence Format
 
-Evidence = facts. Not Knowledge.
+Evidence = facts for **one execution**. Not Knowledge. Not a child of Probe — peer under the same Flow:
+
+```
+Probe (how)  +  Execution  →  Evidence (what happened)
+```
+
+Link via `probe` field (Probe `name` or path).
 
 ## Path
 
