@@ -1,6 +1,6 @@
 ---
 name: loopfix
-description: "AI engineering quality loop after coding: select Flow Probe → headed agent-browser → Evidence → repair → Knowledge. Not a test framework / not E2E substitute / not per-component clicker. Triggers: validate, verify, check, regression, loopfix, init .loopfix, 验证, 检查, 回归, 帮我验证 URL. Flow PASS ≠ step success. Probe = pre-exec contract. Project UI knowledge stays in .loopfix/knowledge/ — never in this skill."
+description: "AI engineering quality loop after coding: select Flow Probe → page analyze → batch Actions → Evidence → Failure Router → repair app (not scripts) → Knowledge. Not test framework/E2E/click-robot. Triggers: validate, verify, check, regression, test page, test flow, validate page, verify flow, loopfix, init .loopfix, 验证, 检查, 回归, 帮我验证 URL, 验证这个页面, 检查这个功能, 回归测试. Known→Replay/batch; unknown→Exploration+ask. Fail: network→console→state→dom→action last. Project UI knowledge in .loopfix/ only."
 argument-hint: "<url|path> [--full|--targeted] [--init-only] [--no-fix] [--quick] [--explore]"
 allowed-tools:
   - Bash(node **/loopfix/scripts/*)
@@ -13,242 +13,168 @@ allowed-tools:
 
 # Loopfix
 
-**What this is:** AI-coding → real browser validation → Evidence → fix → reusable engineering memory.  
-**What this is NOT:** test framework, E2E suite, component auto-clicker.
+**Is:** AI-coding → real validation → Evidence → attribute → fix → memory.  
+**Not:** test framework, E2E suite, step-click robot.
 
 IRON LAW:
 1. **No browser without Flow Probe on disk** (except `--explore`).
-2. **Step success ≠ Flow PASS.** Flow PASS only per rules below.
-3. **No PASS without headed Evidence.** No fix without Evidence root cause.
-4. **UNKNOWN_INTERACTION → ask user.** Never eval-placeholder / guess-click / silent skip.
-5. **Skill = generic rules only.** Project component behavior → `.loopfix/knowledge/` / `browser/actions/`. Never bake project widgets into this skill.
+2. **Step success ≠ Flow PASS.**
+3. **Known → Replay/batch. Unknown → Exploration + ask.** Never guess/eval/skip.
+4. **Fail → Failure Router before any Action edit.** Debug: network → console → state → dom → action (last).
+5. **agent-browser observes/executes — not default fix target.** Prefer app/API bugs.
+6. **Skill = generic only.** Project widgets → `.loopfix/browser/actions` + `knowledge/`.
 
 Red Flags:
-- Announce PASS after one step (input ok / button exists / API 2xx)
-- Browser before Probe file
-- Probe YAML written only after exploring
-- One Probe per button/dialog
-- Load all Probe YAMLs into context
-- Write "How to click XWidget" into this skill
+- fill→snapshot→analyze every field
+- Re-explore when Action exists
+- PASS on single step / API 2xx alone
+- Sleep/skip/drop-expect to force green
+- Tweak Action before network/console/state
+- Probe as click/snapshot log
+
+## Three loops
+
+```
+Capability:  unknown → Action → reuse
+Validation:  Probe → agent-browser → Evidence
+Repair:      Fail → Attribution → code fix → re-verify
+```
 
 ## Architecture
 
 ```
-Code change
- → Knowledge lookup
- → Select flow id (from browser/index.yaml only)
- → Load one Flow Probe → expand Actions
- → agent-browser execute
- → Evidence (step + flow results)
- → Analyze (collect all issues; don't abort at first)
- → Repair → re-run same Probe
- → Update Probe / Actions / Knowledge
+index.yaml → one Probe (+ Actions)
+ → Open → Analyze → Plan → Replay batch / Exploration
+ → Evidence → Failure Router → Repair → re-run → Promote
 ```
 
-Layers:
+Layers: `Probe → Action → agent-browser`. LLM selects/plans; batch executes; never dump all yaml.
 
-```
-Flow Probe  →  Reusable Action  →  agent-browser command
-```
-
-Token rule: **LLM selects; runtime executes.** Read `index.yaml` first — never dump entire `probes/` + `actions/` into context.
-
-## Flow PASS (mandatory)
-
-Distinguish:
-
-| Level | Meaning |
-|-------|---------|
-| Step Result | One step ok/fail/skip/unknown |
-| Flow Result | Whole behavior loop outcome |
-
-**Flow PASS** requires ALL of:
+## Flow PASS
 
 ```
 last_executed_step_id == last_step_id
-AND every expect satisfied
-AND no UNKNOWN_INTERACTION unresolved
-AND no unresolved exceptions (console/network/app errors that block the goal)
+AND all expect pass
+AND no unresolved UNKNOWN_INTERACTION
+AND no unresolved blocking exceptions
 ```
 
-Otherwise **not PASS**. Use:
-
-| Flow Result | When |
-|-------------|------|
-| `PASS` | All conditions above |
-| `FAIL` | Goal broken / expect failed / blocking exception |
-| `INCOMPLETE` | Mid-stop, skipped steps, guess ops, placeholders, early exit |
-
-Mid-run: **continue the flow** when possible; record every issue in Evidence. Do not treat first glitch as Flow PASS/FAIL alone.
-
-## UNKNOWN_INTERACTION
-
-When unsure how to operate a control:
-
-**Forbidden:** `eval` placeholders, guess clicks, random fills, silent skip.
-
-**Required:** halt that interaction as `UNKNOWN_INTERACTION`, ask user:
-
-1. How to open / enter  
-2. How to select / input  
-3. How to confirm  
-4. What success looks like  
-
-Then persist answer as project **Action** (`.loopfix/browser/actions/`) and/or **Knowledge** (`.loopfix/knowledge/components/`). Never into this skill.
-
-## Probe Lifecycle
-
-Contract **before** execute — not a recording after.
-
-`draft` → `ready` → `verified` → `deprecated`
-
-| Status | Rule |
+| Result | When |
 |--------|------|
-| `draft` | Incomplete OK; **not** formal verification PASS candidate |
-| `ready` | Every step has real action (or explicit `skip_reason` + `skip_needs`); no eval placeholders; no unknown ops pretended done |
-| `verified` | Full Flow PASS + complete Evidence once |
-| `deprecated` | Do not reuse |
-
-Schemas: `references/probe-format.md`, `references/action-format.md`, `references/registry-format.md`.
+| `PASS` | All above |
+| `FAIL` | Goal/expect/blocker |
+| `INCOMPLETE` | Mid-stop, skip, guess, placeholder |
 
 ## Parameters
 
 | Param | Default | Meaning |
 |-------|---------|---------|
-| `<url\|path>` | required* | Target (*omit if `--init-only`) |
-| `--full` | yes | Full user-behavior loop |
-| `--targeted` | — | Named loop only |
-| `--init-only` | — | Scaffold `.loopfix/` only |
-| `--no-fix` | — | No app code changes |
-| `--quick` | — | Skip confirm gate |
-| `--explore` | — | Browser w/o Probe; must write draft before reuse claims |
+| `<url\|path>` | required* | Target |
+| `--full` / `--targeted` | full | Scope |
+| `--init-only` | — | Scaffold only |
+| `--no-fix` | — | No app edits |
+| `--quick` | — | Skip confirm gates |
+| `--explore` | — | No Probe gate; draft before reuse claims |
 
 ## Workflow
 
 ```
-Loopfix Progress:
-
-- [ ] Step 0: Parse target ⛔ BLOCKING
-- [ ] Step 1: Ensure .loopfix/ ⛔ BLOCKING
-- [ ] Step 2: Knowledge lookup + Scope
-- [ ] Step 3: Select/create Flow Probe ⛔ BLOCKING
-- [ ] Step 4: Confirm plan ⚠️ REQUIRED (skip if --quick)
-- [ ] Step 5: Execute → Evidence ⚠️ REQUIRED
-- [ ] Step 6: Analyze (Flow Result)
-- [ ] Step 7: Fix + re-run (conditional)
-- [ ] Step 8: Promote Probe/Actions + Knowledge
-- [ ] Step 9: Report Flow Result
+- [ ] Step 0: Parse target ⛔
+- [ ] Step 1: Ensure .loopfix/ ⛔
+- [ ] Step 2: Knowledge + Scope
+- [ ] Step 3: Select/create Flow Probe ⛔
+- [ ] Step 4: Confirm ⚠️ (skip if --quick)
+- [ ] Step 5: Analyze → Plan → Execute → Evidence ⚠️
+- [ ] Step 6: Flow Result + Failure Router
+- [ ] Step 7: Repair + re-run ⚠️
+- [ ] Step 8: Promote + Knowledge
+- [ ] Step 9: Report
 ```
 
-## Step 0: Parse target ⛔ BLOCKING
+## Step 0–1
 
-Parse `$ARGUMENTS`: URL/path, scope, flags. No target + not `--init-only` → ask.
+Parse args. Init: `node <skill_dir>/scripts/init_loopfix.js`.
 
-## Step 1: Ensure `.loopfix/` ⛔ BLOCKING
+## Step 2: Knowledge + Scope
 
-```bash
-node <skill_dir>/scripts/init_loopfix.js
-```
+Need-based read under `knowledge/`.  
+Load `references/validation-scope.md`. Success = business goal.
 
-Scaffold includes `browser/index.yaml`, `probes/`, `actions/`, `knowledge/{drafts,components,patterns,flows}/`, `runs/`.
+## Step 3: Flow Probe ⛔
 
-## Step 2: Knowledge lookup + Scope
+Load `references/probe-format.md` + `references/registry-format.md`.
 
-1. Read relevant `.loopfix/knowledge/{components,patterns,flows,drafts}/` **by need** — not whole tree
-2. Scope → `references/validation-scope.md`
-3. Ask: success = **business goal done**, not step cosmetics
-4. Ask: which **user-behavior loop**?
+1. `browser/index.yaml` → pick flow id  
+2. Load **that** Probe only; prefer verified > ready > draft  
+3. No match → write draft Probe + index entry **now**  
+4. Gate: Probe file on disk before leave
 
-## Step 3: Select/create Flow Probe ⛔ BLOCKING
+## Step 4: Confirm ⚠️
 
-1. Load **only** `.loopfix/browser/index.yaml` → pick `flow id`
-2. Load **that** Probe path (+ referenced Actions only)
-3. Prefer `verified` > `ready` > `draft`
-4. No match → AI writes Flow Probe `draft` + index entry **now**
-5. Gate: Probe file on disk before leave
+Unless `--quick`: flow id, path, status, phase counts, Action refs, fixes allowed.  
+No browser until confirm + Probe (unless `--explore`).
 
-Reuse vs new → `references/probe-format.md` (behavior loop, not URL/button).
+## Step 5: Analyze → Plan → Execute → Evidence ⚠️
 
-## Step 4: Confirm plan ⚠️ REQUIRED
-
-Unless `--quick`:
-
-- URL, scope
-- `flow id` + Probe path + `status`
-- `steps` count / `expect` count
-- Action refs count (if any)
-- New vs reuse
-- Fixes allowed?
-
-No browser until confirm (`--quick` exempt) **and** Probe exists (unless `--explore`).
-
-## Step 5: Execute → Evidence ⚠️ REQUIRED
-
-Preflight: Probe on disk or `--explore`.
+Load in order:
+1. `references/execution-strategy.md`
+2. `references/agent-browser-cli.md`
+3. `references/evidence-format.md` (before writing Evidence)
+4. `references/action-format.md` — **only if** Probe has `use:`
 
 ```bash
 agent-browser open <url> --headed
+agent-browser snapshot -i --json
 ```
 
-`agent-browser skills get core` as needed. Project: `.loopfix/references/agent-browser.md`.
+Follow execution-strategy (Analyze → Plan → batch/explore → Evidence).  
+Version-matched extras: `agent-browser skills get core`.  
+**No Action/code edits here** — attribution is Step 6.
 
-Execute expanded Probe (inline `action:` / `ref:`). Perception: snapshot default; screenshot sparse → `references/evidence-format.md`.
+## Step 6: Flow Result + Failure Router
 
-On unknown control → UNKNOWN_INTERACTION (ask; do not fake).
+Compute PASS/FAIL/INCOMPLETE.  
+If not PASS → load `references/failure-router.md`; fill `verdict`/`category`/`reason`/`suggestion`/`debug_order_checked`.  
+No Action edit unless `ACTION_ERROR` or `BROWSER_ERROR`.
 
-Continue through flow when safe; log all step results. Write:
+## Step 7: Repair + re-run ⚠️
 
-```
-.loopfix/runs/<YYYY-MM-DD>-<slug>/
-  evidence.json
-  screenshot/
-  report.md
-```
+Load `references/repair-principles.md`.
 
-## Step 6: Analyze (Flow Result)
+| Category | Do |
+|----------|-----|
+| `APPLICATION_ERROR` / `API_ERROR` | Unless `--no-fix`: list files + reason; **confirm** (skip if `--quick`); fix app/API; re-run Probe |
+| `ACTION_ERROR` / `BROWSER_ERROR` | Fix Action/env; re-run |
+| `UNKNOWN` | More Evidence / ask — no blind Action patch |
 
-Compute Flow Result (`PASS` | `FAIL` | `INCOMPLETE`) from Evidence — not from vibes.
-
-Ask: step fails vs flow incomplete? App bug vs missing Action vs stale Probe?
-
-## Step 7: Fix + re-run (conditional)
-
-App-code root cause + not `--no-fix` → minimal fix (`references/repair-principles.md`) → **same Probe** Step 5.
-
-Missing Action/Knowledge → write project files, then re-run.
+Ban sleep-to-pass / drop expects / skip broken business step in scripts.
 
 ## Step 8: Promote + Knowledge
 
-1. Refine Probe/Actions from real run
-2. Flow PASS → Probe `verified` (`draft` never claims formal PASS)
-3. Knowledge → `references/knowledge-rules.md` (`components/` / `patterns/` / `flows/`)
-4. Update `browser/index.yaml` if new/changed flow
+Load `references/knowledge-rules.md`.  
+Refine Probe/Actions; Flow PASS → `verified`; patterns → `knowledge/patterns/`; update index.
 
 ## Step 9: Report
 
-1. **Flow Result** (PASS/FAIL/INCOMPLETE) — never imply PASS if INCOMPLETE
-2. Probe path + status before→after
-3. Evidence path + `halted_at` if any
-4. Issues found (may be many)
-5. Fixes / Actions / Knowledge written
+Flow Result + verdict/category/reason + Evidence path + fix target (app vs action) + Knowledge paths.
 
 ## Anti-Patterns
 
-- Step success sold as Flow PASS
-- Stop at first issue and declare done
-- Guess / eval / skip unknown widgets
-- Probe-per-button catalog
-- Load all YAMLs into LLM
-- Project widget recipes inside this skill
-- Lazy Probe persistence after explore
-- Screenshot spam
+- Click robot / snapshot every step
+- Re-explore known Action
+- Hang/loading-stuck blamed on "browser slow" first
+- Patch Action to hide app bug
+- Step PASS as Flow PASS
+- Project recipes in skill
+- Lazy Probe after explore
 
 ## Pre-Delivery Checklist
 
-- [ ] Flow Result computed with PASS rules (last step + expects + no UNKNOWN + no unresolved blockers)
-- [ ] INCOMPLETE used when mid-stop / skip / guess
-- [ ] Probe existed before browser (or `--explore` + draft before reuse)
-- [ ] Selected via `index.yaml`; only needed Probe/Actions loaded
-- [ ] Project knowledge in `.loopfix/`, not skill
-- [ ] Evidence has step results + flow result + halted_at if halted
-- [ ] Headed agent-browser; sparse screenshots
+- [ ] Page Schema + plan before batch
+- [ ] Replay for known; Exploration only for unknown
+- [ ] Flow Result honest (INCOMPLETE when mid-stop)
+- [ ] FAIL/INCOMPLETE has Failure Router category; debug order ok
+- [ ] No Action edit on APPLICATION/API without confirm/override
+- [ ] No sleep/skip/drop-expect to force green
+- [ ] Probe = phases/Actions, not click log
+- [ ] Headed; sparse screenshots

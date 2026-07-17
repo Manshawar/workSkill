@@ -1,6 +1,6 @@
 # Knowledge Rules
 
-Knowledge ≠ error log. Skill stays generic; **project** facts live under `.loopfix/knowledge/`.
+Knowledge ≠ error log. Skill stays generic; project facts under `.loopfix/knowledge/`.
 
 ## Ban
 
@@ -9,61 +9,52 @@ user-page-error.md
 page-error-001.md
 ```
 
-Ban writing project widget recipes into the loopfix **skill**.
+Ban project widget recipes inside the loopfix **skill**.
 
 ## Layout
 
 ```
 knowledge/
-  drafts/         # raw extractions notes
-  components/     # how a project widget works
-  patterns/       # recurring problem shapes
-  flows/          # flow-level learnings
+  drafts/
+  components/     # widget how-to (from Exploration / user teach)
+  patterns/       # recurring failure shapes (from Failure Router)
+  flows/
 ```
 
-## Types
-
-| Type | Where | Meaning |
-|------|-------|---------|
-| component | `components/` | Open/select/confirm/success for a project control |
-| pattern | `patterns/` | Recurring failure shape |
-| flow | `flows/` | Cross-cutting flow notes |
-| incident | `drafts/` → promote | One Evidence-backed case |
-| rule | promote from pattern | Long-lived constraint |
-
-Chain:
+## Pattern examples (abstract)
 
 ```
-Evidence → Incident → Pattern → Rule
+knowledge/patterns/loading-stuck.md
+knowledge/patterns/promise-error.md
+knowledge/patterns/state-not-refresh.md
 ```
 
-## Component note template
+Template:
+
+```markdown
+# <Pattern name>
+
+- Symptom:
+- How to judge: (network → console → state → dom → action)
+- Common causes:
+- Fix direction:
+- Related runs:
+```
+
+## Component template
 
 `.loopfix/knowledge/components/<widget-slug>.md`:
 
 ```markdown
-# <Widget name>
+# <Widget>
 
-- Open:
-- Select / input:
-- Confirm:
-- Success state:
+- Open / select / confirm / success:
 - Related action: browser/actions/...
-- Source run: .loopfix/runs/...
+- Source run:
 ```
 
-Created after UNKNOWN_INTERACTION + user answer (or after verified discovery).
+## Chain
 
-## Draft template
-
-`.loopfix/knowledge/drafts/<topic>.md`:
-
-```markdown
-# <Abstract title>
-
-- Type: pattern | rule | incident | flow
-- Related flow: <flow id>
-- Run: .loopfix/runs/<id>/
-- Summary:
-- Guidance:
+```
+Evidence (+ verdict/category) → Incident → Pattern → Rule
 ```

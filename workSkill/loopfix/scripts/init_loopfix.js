@@ -114,7 +114,7 @@ function main() {
     ["config.yaml", "config.yaml"],
     ["agent-browser.md", "references/agent-browser.md"],
     ["index.yaml", "browser/index.yaml"],
-    ["probe.example.yaml", "browser/probes/_example.login.yaml"],
+    ["probe.example.yaml", "browser/probes/example/login.yaml"],
     ["action.dialog.example.yaml", "browser/actions/ui/dialog.yaml"],
   ];
 

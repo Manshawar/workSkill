@@ -5,11 +5,13 @@ base_url: http://localhost:3000
 scope: targeted
 tags: [example, auth]
 
-steps:
+prepare:
   - id: open
     action: open
     url: /login
-  - id: snapshot
+
+verify:
+  - id: check-form
     action: snapshot
 
 expect:

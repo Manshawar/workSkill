@@ -1,36 +1,25 @@
 # agent-browser (project conventions)
 
-Not full CLI docs:
-
-```bash
-agent-browser skills get core
-agent-browser skills get core --full
-```
+Full LoopFix CLI subset (from upstream README): skill `references/agent-browser-cli.md`.  
+Always refresh with: `agent-browser skills get core`
 
 ## Required
 
 - Headed: `agent-browser open <url> --headed`
-- Sole browser layer: agent-browser
-- loopfix schedules only
+- Analyze: `snapshot -i` (interactive) before planning
+- Replay: `batch --bail` for known Action chains
+- Fail debug: `network requests` → `console` / `errors` → state → `diff snapshot` → Action last
 
-## Selection → execute
-
-1. Read `.loopfix/browser/index.yaml` (catalog only)
-2. Load one Flow Probe
-3. Expand `use:` Actions
-4. Run primitives via agent-browser
-
-## Typical
+## Typical Replay
 
 ```bash
 agent-browser open <url> --headed
-agent-browser snapshot
-agent-browser click @eN
-agent-browser fill @eN "text"
-# screenshot only on fail / visual doubt / optional archive
+agent-browser wait --load networkidle
+agent-browser snapshot -i --json
+# … batch known fills/clicks …
+agent-browser console
+agent-browser network requests --type xhr,fetch
 agent-browser close
 ```
 
-## UNKNOWN_INTERACTION
-
-No eval placeholders / guess clicks. Ask user → write Action + knowledge/components.
+Screenshot only on fail / visual doubt / optional archive → `.loopfix/runs/<slug>/screenshot/`
