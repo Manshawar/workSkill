@@ -6,10 +6,16 @@ Loopfix ≠ step-by-step click robot.
 ## Pipeline (every page / major screen)
 
 ```
-Open Page → Analyze Page → Build Execution Plan → Execute (batch) → Verify
+Resolve sticky session (browser_env.js)
+ → Open Page (--session --restore --headed)
+ → Analyze Page
+ → Build Execution Plan
+ → Execute (batch)
+ → Verify
 ```
 
 Do **not** open then immediately single-step click/fill/snapshot/analyze in a loop.
+Do **not** open without project session (re-login tax).
 
 ## Page Analyze → Page Schema
 

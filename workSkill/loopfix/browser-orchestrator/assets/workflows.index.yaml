@@ -1,0 +1,7 @@
+version: 1
+
+workflows:
+  example-login:
+    description: Open login and snapshot (safe to delete)
+    path: example/login.yaml
+    tags: [example]

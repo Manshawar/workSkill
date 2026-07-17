@@ -1,0 +1,16 @@
+id: ui.dialog.open
+family: ui
+description: Generic dialog open (framework-agnostic template)
+params:
+  title: string?
+
+steps:
+  - id: click-open
+    action:
+      type: click
+    target:
+      role: button
+      name: "{{title}}"
+  - id: after-open
+    action:
+      type: snapshot

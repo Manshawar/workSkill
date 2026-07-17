@@ -1,0 +1,27 @@
+# .loopfix project config
+
+version: 2
+
+browser:
+  tool: agent-browser
+  headed: true
+  # Sticky session across Cursor chats/windows — avoids re-login + token burn
+  # session: auto  → loopfix-<project> via `agent-browser session id --scope worktree`
+  # session: my-name → use exact session id
+  session: auto
+  restore: true          # persist cookies/localStorage across daemon restarts
+  # Optional: pin profile dir instead of/in addition to restore
+  # profile: ~/.loopfix-profiles/myapp
+
+validation:
+  default_scope: full
+  max_fix_rounds: 3
+  require_full_flow_pass: true
+
+paths:
+  index: browser/index.yaml
+  probes: browser/probes
+  actions: browser/actions
+  knowledge: knowledge
+  runs: runs
+  references: references

@@ -48,6 +48,7 @@ function checkStatus(root) {
     "config.yaml",
     "references/agent-browser.md",
     "browser/index.yaml",
+    "browser/workflows/index.yaml",
     "browser/probes",
     "browser/actions",
     "knowledge/drafts",
@@ -84,7 +85,9 @@ function main() {
   const dirs = [
     "references",
     "browser/probes",
+    "browser/workflows/example",
     "browser/actions/ui",
+    "browser/actions/common",
     "browser/actions/components",
     "knowledge/drafts",
     "knowledge/components",
@@ -100,6 +103,7 @@ function main() {
   for (const d of [
     "browser/probes",
     "browser/actions/components",
+    "browser/actions/common",
     "knowledge/drafts",
     "knowledge/components",
     "knowledge/patterns",
@@ -114,8 +118,10 @@ function main() {
     ["config.yaml", "config.yaml"],
     ["agent-browser.md", "references/agent-browser.md"],
     ["index.yaml", "browser/index.yaml"],
+    ["workflows.index.yaml", "browser/workflows/index.yaml"],
+    ["workflow.example.yaml", "browser/workflows/example/login.yaml"],
     ["probe.example.yaml", "browser/probes/example/login.yaml"],
-    ["action.dialog.example.yaml", "browser/actions/ui/dialog.yaml"],
+    ["action.dialog.example.yaml", "browser/actions/ui/dialog.open.yaml"],
   ];
 
   for (const [srcName, destRel] of copies) {

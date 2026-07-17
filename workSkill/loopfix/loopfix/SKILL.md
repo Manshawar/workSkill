@@ -1,9 +1,10 @@
 ---
 name: loopfix
-description: "AI engineering quality loop after coding: select Flow Probe → page analyze → batch Actions → Evidence → Failure Router → repair app (not scripts) → Knowledge. Not test framework/E2E/click-robot. Triggers: validate, verify, check, regression, test page, test flow, validate page, verify flow, loopfix, init .loopfix, 验证, 检查, 回归, 帮我验证 URL, 验证这个页面, 检查这个功能, 回归测试. Known→Replay/batch; unknown→Exploration+ask. Fail: network→console→state→dom→action last. Project UI knowledge in .loopfix/ only."
+description: "AI engineering quality loop after coding: select Flow Probe/workflow → browser-orchestrator batch exec → Evidence → Failure Router → repair app → Knowledge. Not test framework/E2E/click-robot. Triggers: validate, verify, check, regression, test page, test flow, validate page, verify flow, loopfix, init .loopfix, 验证, 检查, 回归, 帮我验证 URL, 验证这个页面, 检查这个功能, 回归测试. LLM selects workflow only — never step-clicks. Fail: network→console→state→dom→action last. Project UI knowledge in .loopfix/ only."
 argument-hint: "<url|path> [--full|--targeted] [--init-only] [--no-fix] [--quick] [--explore]"
 allowed-tools:
-  - Bash(node **/loopfix/scripts/*)
+  - Bash(node **/loopfix/loopfix/scripts/*)
+  - Bash(node **/loopfix/browser-orchestrator/scripts/*)
   - Bash(agent-browser:*)
   - Bash(npx agent-browser:*)
   - Read(**/.loopfix/**)
@@ -13,16 +14,27 @@ allowed-tools:
 
 # Loopfix
 
+**Suite layout** (same category, install both):
+
+```
+loopfix/
+├── loopfix/                 ← this skill (validation loop)
+└── browser-orchestrator/    ← workflow execution (+ agent-browser check)
+```
+
+**Depends on official `agent-browser` skill + CLI** (global). Do not fork agent-browser.
+
 **Is:** AI-coding → real validation → Evidence → attribute → fix → memory.  
 **Not:** test framework, E2E suite, step-click robot.
 
 IRON LAW:
 1. **No browser without Flow Probe on disk** (except `--explore`).
 2. **Step success ≠ Flow PASS.**
-3. **Known → Replay/batch. Unknown → Exploration + ask.** Never guess/eval/skip.
+3. **Known → browser-orchestrator Replay. Unknown → UNKNOWN_ACTION + ask.** Never guess/eval/skip.
 4. **Fail → Failure Router before any Action edit.** Debug: network → console → state → dom → action (last).
 5. **agent-browser observes/executes — not default fix target.** Prefer app/API bugs.
 6. **Skill = generic only.** Project widgets → `.loopfix/browser/actions` + `knowledge/`.
+7. **Sticky browser session.** Always `--session` + `--restore` (via `browser_env.js`). Never cold-open; never `close --all` on project session.
 
 Red Flags:
 - fill→snapshot→analyze every field
@@ -36,19 +48,24 @@ Red Flags:
 
 ```
 Capability:  unknown → Action → reuse
-Validation:  Probe → agent-browser → Evidence
+Validation:  Probe → browser-orchestrator → Evidence
 Repair:      Fail → Attribution → code fix → re-verify
 ```
 
 ## Architecture
 
 ```
-index.yaml → one Probe (+ Actions)
- → Open → Analyze → Plan → Replay batch / Exploration
- → Evidence → Failure Router → Repair → re-run → Promote
+loopfix (why)
+  → select Probe / workflow id
+  → browser-orchestrator (how): run_workflow.js
+       → resolve Action
+       → agent-browser batch (atoms)
+  → Evidence
+  → Failure Router → Repair → re-run orchestrator
 ```
 
-Layers: `Probe → Action → agent-browser`. LLM selects/plans; batch executes; never dump all yaml.
+Layers: `Probe → Workflow → Action → agent-browser`.  
+**LLM never step-clicks.** Select workflow; orchestrator executes.
 
 ## Flow PASS
 
@@ -84,7 +101,7 @@ AND no unresolved blocking exceptions
 - [ ] Step 2: Knowledge + Scope
 - [ ] Step 3: Select/create Flow Probe ⛔
 - [ ] Step 4: Confirm ⚠️ (skip if --quick)
-- [ ] Step 5: Analyze → Plan → Execute → Evidence ⚠️
+- [ ] Step 5: browser-orchestrator execute → Evidence ⚠️
 - [ ] Step 6: Flow Result + Failure Router
 - [ ] Step 7: Repair + re-run ⚠️
 - [ ] Step 8: Promote + Knowledge
@@ -93,7 +110,20 @@ AND no unresolved blocking exceptions
 
 ## Step 0–1
 
-Parse args. Init: `node <skill_dir>/scripts/init_loopfix.js`.
+Parse args.
+
+**Before any browser work** ⛔:
+
+```bash
+node <suite>/browser-orchestrator/scripts/check_agent_browser.js
+# missing → stop; tell user:
+#   npx skills add vercel-labs/agent-browser
+#   npm install -g agent-browser
+#   agent-browser install
+```
+
+Init project: `node <loopfix_skill>/scripts/init_loopfix.js`  
+(`<loopfix_skill>` = `loopfix/loopfix/` in suite)
 
 ## Step 2: Knowledge + Scope
 
@@ -114,22 +144,29 @@ Load `references/probe-format.md` + `references/registry-format.md`.
 Unless `--quick`: flow id, path, status, phase counts, Action refs, fixes allowed.  
 No browser until confirm + Probe (unless `--explore`).
 
-## Step 5: Analyze → Plan → Execute → Evidence ⚠️
+## Step 5: Execute via browser-orchestrator → Evidence ⚠️
 
-Load in order:
-1. `references/execution-strategy.md`
-2. `references/agent-browser-cli.md`
-3. `references/evidence-format.md` (before writing Evidence)
-4. `references/action-format.md` — **only if** Probe has `use:`
+**Do not** drive the browser click-by-click in chat. Delegate:
 
 ```bash
-agent-browser open <url> --headed
-agent-browser snapshot -i --json
+node <suite>/browser-orchestrator/scripts/run_workflow.js <workflow-id> --cwd <project> --dry-run
+node <suite>/browser-orchestrator/scripts/run_workflow.js <workflow-id> --cwd <project> [--base-url <url>]
 ```
 
-Follow execution-strategy (Analyze → Plan → batch/explore → Evidence).  
-Version-matched extras: `agent-browser skills get core`.  
-**No Action/code edits here** — attribution is Step 6.
+`<suite>` = parent dir containing `loopfix/` + `browser-orchestrator/`.
+
+Session sticky is handled inside `run_workflow.js` via loopfix `browser_env.js`.
+
+| Script status | loopfix next |
+|---------------|----------------|
+| `PASS` | Step 6 (may still Failure-Router edge cases) |
+| `FAIL` | Step 6 Failure Router on Evidence |
+| `UNKNOWN_ACTION` | Ask user → write `.loopfix/browser/actions/` → re-run script |
+
+Load `references/evidence-format.md` when merging orchestrator Evidence into Flow Result.  
+Ad-hoc `agent-browser console/network` **only** inside Failure Router (Step 6) — not for walking the happy path.
+
+**Ban:** bare step-click loops; `close --all` on shared session.
 
 ## Step 6: Flow Result + Failure Router
 
@@ -160,21 +197,23 @@ Flow Result + verdict/category/reason + Evidence path + fix target (app vs actio
 
 ## Anti-Patterns
 
-- Click robot / snapshot every step
+- Click robot / snapshot every step (use browser-orchestrator)
 - Re-explore known Action
 - Hang/loading-stuck blamed on "browser slow" first
 - Patch Action to hide app bug
 - Step PASS as Flow PASS
 - Project recipes in skill
 - Lazy Probe after explore
+- Cold `open` without session/restore (forces re-login)
+- `close --all` killing shared project session
 
 ## Pre-Delivery Checklist
 
-- [ ] Page Schema + plan before batch
-- [ ] Replay for known; Exploration only for unknown
+- [ ] Execution via `run_workflow.js` — not manual click loop
 - [ ] Flow Result honest (INCOMPLETE when mid-stop)
 - [ ] FAIL/INCOMPLETE has Failure Router category; debug order ok
 - [ ] No Action edit on APPLICATION/API without confirm/override
+- [ ] UNKNOWN_ACTION → project Action file, not skill
 - [ ] No sleep/skip/drop-expect to force green
-- [ ] Probe = phases/Actions, not click log
-- [ ] Headed; sparse screenshots
+- [ ] Headed + restore session; sparse screenshots
+- [ ] Did not `close --all` on project session
