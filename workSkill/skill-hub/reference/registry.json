@@ -1,0 +1,134 @@
+{
+  "$schema": "skill-installer-registry-v1",
+  "generatedAt": "2026-07-14",
+  "purpose": "skill 原子化元数据库。全局只保留极少数保留项，其余 skill 从全局卸载后，仍可通过此表按项目类型按需拉取，避免污染全局上下文。",
+  "repositories": {
+    "anthropic-agent-skills": {
+      "type": "github",
+      "repo": "anthropics/skills",
+      "url": "https://github.com/anthropics/skills",
+      "marketplaceName": "anthropic-agent-skills",
+      "desc": "Anthropic 官方文档/技能仓库"
+    },
+    "claude-plugins-official": {
+      "type": "github",
+      "repo": "anthropics/claude-plugins-official",
+      "url": "https://github.com/anthropics/claude-plugins-official",
+      "marketplaceName": "claude-plugins-official",
+      "desc": "Anthropic 官方插件市场(含 LSP 等)"
+    },
+    "superpowers-marketplace": {
+      "type": "github",
+      "repo": "obra/superpowers-marketplace",
+      "url": "https://github.com/obra/superpowers-marketplace",
+      "marketplaceName": "superpowers-marketplace",
+      "desc": "superpowers 生态:方法论/流程类 skill"
+    },
+    "everything-claude-code": {
+      "type": "git",
+      "url": "https://github.com/affaan-m/everything-claude-code.git",
+      "marketplaceName": "everything-claude-code",
+      "desc": "大型综合 plugin(156 skills)"
+    },
+    "caveman": {
+      "type": "github",
+      "repo": "JuliusBrussee/caveman",
+      "url": "https://github.com/JuliusBrussee/caveman",
+      "marketplaceName": "caveman",
+      "desc": "caveman 省 token 工具族"
+    },
+    "claude-hud": {
+      "type": "github",
+      "repo": "jarrodwatts/claude-hud",
+      "url": "https://github.com/jarrodwatts/claude-hud",
+      "marketplaceName": "claude-hud",
+      "desc": "状态栏 plugin(非 skill)"
+    }
+  },
+  "categories": [
+    "常用",
+    "Token优化/上下文管理",
+    "skill开发",
+    "开发流程方法论",
+    "文档处理",
+    "写作/沟通",
+    "代码质量/评审",
+    "设计/视觉",
+    "浏览器/测试",
+    "知识/学习",
+    "集成/工作流",
+    "未分类"
+  ],
+  "skills": [
+    {"name": "find-skills", "repo": "local-unknown", "category": "skill开发", "keepGlobal": true, "desc": "发现并安装 skill 的助手。保留项。"},
+    {"name": "skill-forge", "repo": "local-unknown", "category": "skill开发", "keepGlobal": true, "desc": "创建高质量 production-grade skill。保留项。"},
+    {"name": "skill-review", "repo": "local-unknown", "category": "skill开发", "keepGlobal": true, "desc": "skill 质量审查/审计。保留项。"},
+
+    {"name": "caveman", "repo": "caveman", "category": "Token优化/上下文管理", "keepGlobal": true, "desc": "超压缩通信模式，输出 token -65%，保留全部技术精度。支持 lite/full/ultra/wenyan 强度。"},
+    {"name": "caveman-commit", "repo": "caveman", "category": "Token优化/上下文管理", "keepGlobal": true, "desc": "超压缩 commit message 生成器，Conventional Commits 格式。"},
+    {"name": "caveman-review", "repo": "caveman", "category": "Token优化/上下文管理", "keepGlobal": true, "desc": "超压缩代码评审，每条一行:位置+问题+修复。"},
+    {"name": "caveman-compress", "repo": "caveman", "category": "Token优化/上下文管理", "keepGlobal": true, "desc": "压缩 CLAUDE.md/记忆文件成 caveman 格式省输入 token。"},
+    {"name": "caveman-stats", "repo": "caveman", "category": "Token优化/上下文管理", "keepGlobal": true, "desc": "显示会话真实 token 用量/节省量(读 session log)。"},
+    {"name": "caveman-help", "repo": "caveman", "category": "Token优化/上下文管理", "keepGlobal": true, "desc": "所有 caveman 模式速查卡。"},
+    {"name": "cavecrew", "repo": "caveman", "category": "Token优化/上下文管理", "keepGlobal": true, "desc": "决策何时派发压缩型子代理(investigator/builder/reviewer)，上下文 -60%。"},
+
+    {"name": "skill-creator", "repo": "claude-plugins-official", "category": "skill开发", "keepGlobal": false, "desc": "创建/改进/测度 skill 性能。与 skill-forge 重叠。"},
+    {"name": "writing-skills", "repo": "unknown", "category": "skill开发", "keepGlobal": false, "desc": "创建/编辑/验证 skill。与 skill-forge 重叠。"},
+    {"name": "mcp-builder", "repo": "everything-claude-code", "category": "skill开发", "keepGlobal": false, "desc": "构建 MCP 服务器的指南。", "sourceNote": "来源为推测"},
+
+    {"name": "brainstorming", "repo": "superpowers-marketplace", "category": "开发流程方法论", "keepGlobal": false, "desc": "创意工作前探索意图/需求/设计。"},
+    {"name": "systematic-debugging", "repo": "superpowers-marketplace", "category": "开发流程方法论", "keepGlobal": false, "desc": "遇 bug/测试失败/异常行为时，提修复前先系统排查。"},
+    {"name": "test-driven-development", "repo": "superpowers-marketplace", "category": "开发流程方法论", "keepGlobal": false, "desc": "实现任何 feature/bugfix 前先写测试。"},
+    {"name": "writing-plans", "repo": "superpowers-marketplace", "category": "开发流程方法论", "keepGlobal": false, "desc": "有多步任务 spec/需求时，碰代码前先写计划。"},
+    {"name": "executing-plans", "repo": "superpowers-marketplace", "category": "开发流程方法论", "keepGlobal": false, "desc": "把写好的实现计划在独立会话带检查点执行。"},
+    {"name": "dispatching-parallel-agents", "repo": "superpowers-marketplace", "category": "开发流程方法论", "keepGlobal": false, "desc": "面对 2+ 个无共享状态独立任务时派发并行 agent。"},
+    {"name": "subagent-driven-development", "repo": "superpowers-marketplace", "category": "开发流程方法论", "keepGlobal": false, "desc": "在当前会话用独立任务执行实现计划。"},
+    {"name": "finishing-a-development-branch", "repo": "superpowers-marketplace", "category": "开发流程方法论", "keepGlobal": false, "desc": "实现完成、测试通过后，决定如何整合(merge/PR/cleanup)。"},
+    {"name": "using-git-worktrees", "repo": "superpowers-marketplace", "category": "开发流程方法论", "keepGlobal": false, "desc": "特性工作需隔离时用 git worktree 隔离工作区。"},
+    {"name": "verification-before-completion", "repo": "superpowers-marketplace", "category": "开发流程方法论", "keepGlobal": false, "desc": "声称工作完成前先跑验证命令并确认输出。"},
+    {"name": "using-superpowers", "repo": "superpowers-marketplace", "category": "开发流程方法论", "keepGlobal": false, "desc": "superpowers 生态总开关:每次对话开始先找用 skill。⚠️ 删后 superpowers 链行为改变。"},
+
+    {"name": "docx", "repo": "anthropic-agent-skills", "category": "文档处理", "keepGlobal": false, "desc": "创建/读取/编辑 Word .docx 文档。"},
+    {"name": "pdf", "repo": "anthropic-agent-skills", "category": "文档处理", "keepGlobal": false, "desc": "PDF 读取/合并/拆分/水印/表单/OCR 等。"},
+    {"name": "pptx", "repo": "anthropic-agent-skills", "category": "文档处理", "keepGlobal": false, "desc": "PowerPoint .pptx 创建/解析/编辑。"},
+    {"name": "xlsx", "repo": "anthropic-agent-skills", "category": "文档处理", "keepGlobal": false, "desc": "Excel .xlsx/.csv 读写/公式/图表/清洗。"},
+
+    {"name": "internal-comms", "repo": "everything-claude-code", "category": "写作/沟通", "keepGlobal": false, "desc": "写各类内部沟通文档(状态报告/更新/FAQ/事故报告)。", "sourceNote": "来源为推测"},
+    {"name": "doc-coauthoring", "repo": "everything-claude-code", "category": "写作/沟通", "keepGlobal": false, "desc": "结构化工作流协作撰写文档/提案/技术规范。", "sourceNote": "来源为推测"},
+    {"name": "slack-gif-creator", "repo": "everything-claude-code", "category": "写作/沟通", "keepGlobal": false, "desc": "为 Slack 制作优化的动画 GIF。", "sourceNote": "来源为推测"},
+
+    {"name": "code-review-expert", "repo": "everything-claude-code", "category": "代码质量/评审", "keepGlobal": false, "desc": "高级工程师视角的 expert 代码评审，检测 SOLID/安全风险。", "sourceNote": "来源为推测"},
+    {"name": "requesting-code-review", "repo": "superpowers-marketplace", "category": "代码质量/评审", "keepGlobal": false, "desc": "完成任务/合并前验证工作满足要求。"},
+    {"name": "receiving-code-review", "repo": "superpowers-marketplace", "category": "代码质量/评审", "keepGlobal": false, "desc": "收到评审反馈时，实现建议前先技术验证不盲从。"},
+
+    {"name": "frontend-design", "repo": "everything-claude-code", "category": "设计/视觉", "keepGlobal": false, "desc": "构建新 UI 时有意识的设计/排版/美学方向。", "sourceNote": "来源为推测"},
+    {"name": "canvas-design", "repo": "everything-claude-code", "category": "设计/视觉", "keepGlobal": false, "desc": "用设计哲学创建 .png/.pdf 视觉艺术。", "sourceNote": "来源为推测"},
+    {"name": "algorithmic-art", "repo": "everything-claude-code", "category": "设计/视觉", "keepGlobal": false, "desc": "用 p5.js + seeded 随机性创作算法艺术。", "sourceNote": "来源为推测"},
+    {"name": "brand-guidelines", "repo": "everything-claude-code", "category": "设计/视觉", "keepGlobal": false, "desc": "套用 Anthropic 官方品牌色/字体。", "sourceNote": "来源为推测"},
+    {"name": "theme-factory", "repo": "everything-claude-code", "category": "设计/视觉", "keepGlobal": false, "desc": "给 artifacts 套主题(10 预设 + 动态生成)。", "sourceNote": "来源为推测"},
+    {"name": "web-artifacts-builder", "repo": "everything-claude-code", "category": "设计/视觉", "keepGlobal": false, "desc": "用 React/Tailwind/shadcn 搭复杂多组件 HTML artifacts。", "sourceNote": "来源为推测"},
+
+    {"name": "agent-browser", "repo": "everything-claude-code", "category": "浏览器/测试", "keepGlobal": false, "desc": "浏览器自动化 CLI，导航/填表/点击/截图/抓数据。", "sourceNote": "来源为推测"},
+    {"name": "webapp-testing", "repo": "everything-claude-code", "category": "浏览器/测试", "keepGlobal": false, "desc": "用 Playwright 测试本地 web 应用。", "sourceNote": "来源为推测"},
+
+    {"name": "graphify", "repo": "local-unknown", "category": "知识/学习", "keepGlobal": false, "desc": "任何输入(代码/文档/论文/图像/视频)→ 知识图谱。⚠️ 全局 CLAUDE.md 有 /graphify 触发指令，删后需同步改 CLAUDE.md 或改为项目级。"},
+    {"name": "wiki-ingest", "repo": "local-unknown", "category": "知识/学习", "keepGlobal": false, "desc": "把文章/文档/笔记编译成结构化 wiki 知识库。"},
+    {"name": "book-study", "repo": "local-unknown", "category": "知识/学习", "keepGlobal": false, "desc": "读书教练:系统化带知识编译/掌握测试/间隔重复。"},
+    {"name": "sigma", "repo": "local-unknown", "category": "知识/学习", "keepGlobal": false, "desc": "1对1 AI 导师，Bloom 2-Sigma 掌握式学习。"},
+
+    {"name": "grp", "repo": "local-unknown", "category": "集成/工作流", "keepGlobal": false, "desc": "Gerrit push 工作流:git pull 后 st grp 推送 Gerrit。"},
+    {"name": "daily-report", "repo": "local-unknown", "category": "集成/工作流", "keepGlobal": false, "desc": "按小时填写的运维/前端/后端/测试/产品日报生成。"},
+    {"name": "seed-data", "repo": "local-unknown", "category": "集成/工作流", "keepGlobal": false, "desc": "从 curl 提取请求模板批量生成变体数据并发送。"},
+    {"name": "fetch-md-workspace", "repo": "local-unknown", "category": "集成/工作流", "keepGlobal": false, "desc": "description 为空，触发不可靠。待确认是否自建。"},
+
+    {"name": "claude-api", "repo": "anthropic-agent-skills", "category": "skill开发", "keepGlobal": false, "desc": "Claude API/SDK 文档 skill，用于构建 LLM 应用。"},
+    {"name": "template", "repo": "scaffold", "category": "未分类", "keepGlobal": false, "desc": "脚手架模板，description 为占位符。建议删。"},
+    {"name": "template-skill", "repo": "scaffold", "category": "未分类", "keepGlobal": false, "desc": "脚手架模板，description 为占位符。建议删。"},
+    {"name": "_deprecated", "repo": "deprecated", "category": "未分类", "keepGlobal": false, "desc": "已废弃目录。建议删。"}
+  ],
+  "commonCategory": {
+    "name": "常用",
+    "desc": "每次初始化都会用、但又不想放全局污染上下文的 skill。项目初始化时优先拉取这个分类。",
+    "members": []
+  }
+}

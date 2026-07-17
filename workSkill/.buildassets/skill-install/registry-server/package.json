@@ -1,0 +1,19 @@
+{
+  "name": "registry-server",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "skill-install 命令层源码(tsup 打包成单文件 bin/registry.js)。CLI 子命令 + serve 子命令同入口。详见 skill-install/DESIGN.md §八.2 / §九。",
+  "bin": {
+    "registry.js": "dist/registry.js"
+  },
+  "scripts": {
+    "dev": "node src/index.js",
+    "build": "tsup",
+    "serve": "node src/index.js serve"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.0",
+    "typescript": "^5.6.0"
+  }
+}

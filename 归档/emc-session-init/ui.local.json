@@ -1,0 +1,11 @@
+{
+  "_comment": "Local UI labels for SSO page. Gitignored. Do not commit. Do not paste into chat/API.",
+
+  "tabAccount": "账号登录",
+  "phAccount": "请输入手机号码",
+  "phVerify": "请输入短信验证码",
+  "orgPrompt": "请选择需要登录的组织",
+  "btnNext": "下一步",
+  "btnSubmit": "登录",
+  "btnBackend": "前往后台"
+}
