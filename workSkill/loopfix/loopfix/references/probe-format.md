@@ -67,7 +67,7 @@ Flat `steps:` still allowed for tiny probes; prefer phases for real flows.
 Phases run in order: `prepare → input → submit → verify`.
 
 Primitive `action`: `open | click | fill | type | select | wait | snapshot`  
-`use:` → Action (`references/action-format.md`).
+`use:` → Action (canonical: browser-orchestrator `action-schema.md`; local pointer `action-format.md`).
 
 ## Ban
 

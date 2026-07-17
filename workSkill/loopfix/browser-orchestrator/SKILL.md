@@ -1,6 +1,6 @@
 ---
 name: browser-orchestrator
-description: "LoopFix browser orchestration layer: load workflow → resolve Action → batch-call official agent-browser → Evidence. Not a browser driver. Triggers: run workflow, execute workflow, orchestrate browser, browser-orchestrator, batch browser flow, 执行工作流, 跑 workflow, 编排浏览器. Use when LLM must NOT click step-by-step. Calls agent-browser only; never reimplements click/fill/snapshot."
+description: "LoopFix browser orchestration: load workflow → resolve Action → batch official agent-browser → Evidence. Not a browser driver. Triggers: run workflow, execute workflow, orchestrate browser, browser-orchestrator, batch browser flow, 执行工作流, 跑 workflow, 编排浏览器. LLM must NOT click step-by-step. Calls agent-browser only."
 argument-hint: "<workflow-id|path> [--cwd <project>] [--dry-run] [--base-url <url>]"
 allowed-tools:
   - Bash(node **/loopfix/browser-orchestrator/scripts/*)
@@ -14,136 +14,54 @@ allowed-tools:
 
 # Browser Orchestrator
 
-**Suite layout:**
+IRON LAW: **LLM picks workflow id. This skill executes. Never step-click in chat.**
 
-```
-loopfix/
-├── loopfix/                 ← validation loop (caller)
-└── browser-orchestrator/    ← this skill (exec + CLI check)
-```
-
-**Requires official `agent-browser`** (skill + CLI). Not bundled here.  
-See `references/agent-browser-dependency.md`.
-
-IRON LAW: **LLM selects workflow id. Orchestrator executes. Never click/fill/snapshot one-by-one in the chat.**
-
-Red Flags:
-- LLM `agent-browser click` between analyses
-- Reimplementing browser ops inside this skill
-- Editing official agent-browser skill
-- Writing project widget recipes into this skill (→ `.loopfix/browser/actions/`)
-- Pretending PASS when Action missing (must `UNKNOWN_ACTION`)
-
-## Layer map
-
-```
-loopfix / validation-loop     → why validate, Failure Router, Knowledge
-        ↓
-browser-orchestrator (this)  → workflow / action resolve / batch exec / Evidence
-        ↓
-agent-browser (official)     → open/click/fill/snapshot/console/network
-        ↓
-Browser
-```
-
-Do **not** modify agent-browser. Do **not** copy it. Call it.
+Suite: called by `loopfix/loopfix`. Atoms = official `agent-browser` only — see `references/agent-browser-dependency.md`.
 
 ## Parameters
 
 | Param | Meaning |
 |-------|---------|
-| `<workflow-id\|path>` | id from `browser/workflows/index.yaml` or path to workflow file |
-| `--cwd <project>` | Project root containing `.loopfix/` |
-| `--dry-run` | Resolve + print plan; no browser |
-| `--base-url <url>` | Override workflow base_url |
+| `<workflow-id\|path>` | From `browser/workflows/index.yaml` or file path |
+| `--cwd <project>` | Project with `.loopfix/` |
+| `--dry-run` | Plan only |
+| `--base-url <url>` | Override base_url |
 
 ## Workflow
 
 ```
-Browser Orchestrator Progress:
-
-- [ ] Step 0: agent-browser installed ⛔ + sticky session ⛔
-- [ ] Step 1: Load workflow (id → file) ⛔
-- [ ] Step 2: Resolve Actions → command plan ⛔
-- [ ] Step 3: Confirm if UNKNOWN_ACTION / empty plan ⚠️
-- [ ] Step 4: Execute via agent-browser (batch) ⚠️
-- [ ] Step 5: Write Evidence under .loopfix/runs/
-- [ ] Step 6: Return status to caller (PASS|FAIL|UNKNOWN_ACTION|INCOMPLETE)
+- [ ] Step 0: check_agent_browser + session ⛔
+- [ ] Step 1–2: run_workflow.js (load + resolve) ⛔
+- [ ] Step 3: UNKNOWN_ACTION → ask user ⚠️
+- [ ] Step 4: batch execute → Evidence
+- [ ] Step 5: return status to loopfix
 ```
 
-## Step 0: agent-browser + session ⛔
-
-**CLI check** (real run; `run_workflow.js` also checks):
+## Step 0 ⛔
 
 ```bash
 node <this_skill>/scripts/check_agent_browser.js
 ```
 
-If missing, stop and ask user to run:
+Missing → stop; install per `references/agent-browser-dependency.md`.  
+Session: `run_workflow.js` calls loopfix `browser_env.js` (sticky `--session --restore`).
+
+## Step 1–4
 
 ```bash
-npx skills add vercel-labs/agent-browser
-npm install -g agent-browser
-agent-browser install
+node <this_skill>/scripts/run_workflow.js <workflow-id> --cwd <project> [--dry-run] [--base-url <url>]
 ```
 
-Session (via loopfix `browser_env.js` inside `run_workflow.js`):
+Script: load workflow → expand Action → `agent-browser batch` → write `.loopfix/runs/<id>/`.  
+Schemas when editing: `workflow-schema.md`, `action-schema.md`, `evidence-schema.md`.  
+`UNKNOWN_ACTION` → ask → write `.loopfix/browser/actions/` → re-run. No eval/guess/skip.
 
-```bash
-eval $(node <suite>/loopfix/scripts/browser_env.js --cwd <project> --export)
-```
+## Step 5
 
-Same session across chats — no re-login.
+Return `status`, `run_id`, `evidence` path, `unknown_actions[]`.  
+loopfix owns Failure Router / repair.
 
-## Step 1–2: Load + resolve ⛔
+## Anti-Patterns / Pre-Delivery
 
-```bash
-node <skill_dir>/scripts/run_workflow.js <workflow-id> --cwd <project> [--dry-run] [--base-url <url>]
-```
-
-Script:
-1. Reads `.loopfix/browser/workflows/` (+ index)
-2. Expands `action.use` from `.loopfix/browser/actions/`
-3. Emits agent-browser command list
-4. On missing Action → exit `UNKNOWN_ACTION` (no guess/eval)
-
-Schemas: load when editing files — `references/workflow-schema.md`, `references/action-schema.md`.
-
-## Step 3: UNKNOWN_ACTION ⚠️
-
-If script returns `UNKNOWN_ACTION`:
-- Stop. Ask user how to operate the control.
-- Persist to `.loopfix/browser/actions/` (project). **Not** this skill.
-- Re-run workflow.
-
-## Step 4: Execute ⚠️
-
-Script runs `agent-browser batch` (or sequential with same `--session`) with sticky flags.  
-LLM does **not** interleave analysis between clicks.
-
-Checkpoints: snapshot only where workflow says `snapshot` / phase verify — not every step.
-
-## Step 5: Evidence
-
-Writes `.loopfix/runs/<run-id>/` — schema `references/evidence-schema.md`.
-
-## Step 6: Return to loopfix
-
-Hand back: `status`, `run_id`, `evidence` path, `unknown_actions[]`.  
-Caller (loopfix) does Failure Router / repair — not this skill.
-
-## Anti-Patterns
-
-- Step-by-step LLM browser driving
-- CSS nth-child hardcoding in workflows (use Action abstractions)
-- `eval` to fake unknown widgets
-- `close --all` on shared session
-- Dumping all workflows into LLM context — select by id/index only
-
-## Pre-Delivery Checklist
-
-- [ ] Used `run_workflow.js` (or dry-run then run) — not manual click loop
-- [ ] Official agent-browser only for atoms
-- [ ] Evidence written
-- [ ] UNKNOWN_ACTION stopped for user teach → project Action
-- [ ] No edits to agent-browser skill
+- Chat click loops; CSS nth-child in workflows; `close --all`; dump all yaml into context
+- [ ] Used `run_workflow.js`; Evidence written; UNKNOWN stopped for teach; no agent-browser skill edits

@@ -14,73 +14,27 @@ allowed-tools:
 
 # Loopfix
 
-**Suite layout** (same category, install both):
-
-```
-loopfix/
-├── loopfix/                 ← this skill (validation loop)
-└── browser-orchestrator/    ← workflow execution (+ agent-browser check)
-```
-
-**Depends on official `agent-browser` skill + CLI** (global). Do not fork agent-browser.
-
-**Is:** AI-coding → real validation → Evidence → attribute → fix → memory.  
-**Not:** test framework, E2E suite, step-click robot.
+**Is:** AI-coding → validate → Evidence → attribute → fix → memory.  
+**Not:** test framework / E2E / click-robot.  
+**Suite:** `loopfix/loopfix` (this) + `loopfix/browser-orchestrator` (exec). Official `agent-browser` for atoms.
 
 IRON LAW:
-1. **No browser without Flow Probe on disk** (except `--explore`).
-2. **Step success ≠ Flow PASS.**
-3. **Known → browser-orchestrator Replay. Unknown → UNKNOWN_ACTION + ask.** Never guess/eval/skip.
-4. **Fail → Failure Router before any Action edit.** Debug: network → console → state → dom → action (last).
-5. **agent-browser observes/executes — not default fix target.** Prefer app/API bugs.
-6. **Skill = generic only.** Project widgets → `.loopfix/browser/actions` + `knowledge/`.
-7. **Sticky browser session.** Always `--session` + `--restore` (via `browser_env.js`). Never cold-open; never `close --all` on project session.
-
-Red Flags:
-- fill→snapshot→analyze every field
-- Re-explore when Action exists
-- PASS on single step / API 2xx alone
-- Sleep/skip/drop-expect to force green
-- Tweak Action before network/console/state
-- Probe as click/snapshot log
-
-## Three loops
-
-```
-Capability:  unknown → Action → reuse
-Validation:  Probe → browser-orchestrator → Evidence
-Repair:      Fail → Attribution → code fix → re-verify
-```
+1. No browser without Probe on disk (except `--explore`).
+2. Step success ≠ Flow PASS.
+3. Execute only via browser-orchestrator — never step-click in chat.
+4. Fail → Failure Router before Action edits. Debug: network → console → state → dom → action last.
+5. Prefer app/API fixes; agent-browser is observer, not default fix target.
+6. Project widgets → `.loopfix/browser/actions` + `knowledge/` — never this skill.
 
 ## Architecture
 
 ```
-loopfix (why)
-  → select Probe / workflow id
-  → browser-orchestrator (how): run_workflow.js
-       → resolve Action
-       → agent-browser batch (atoms)
-  → Evidence
-  → Failure Router → Repair → re-run orchestrator
+Probe (why) → browser-orchestrator (how) → agent-browser (atoms) → Evidence
+ → Failure Router → Repair → re-run orchestrator → Knowledge
 ```
 
-Layers: `Probe → Workflow → Action → agent-browser`.  
-**LLM never step-clicks.** Select workflow; orchestrator executes.
-
-## Flow PASS
-
-```
-last_executed_step_id == last_step_id
-AND all expect pass
-AND no unresolved UNKNOWN_INTERACTION
-AND no unresolved blocking exceptions
-```
-
-| Result | When |
-|--------|------|
-| `PASS` | All above |
-| `FAIL` | Goal/expect/blocker |
-| `INCOMPLETE` | Mid-stop, skip, guess, placeholder |
+**Flow PASS** = last step done AND all expects AND no UNKNOWN AND no unresolved blockers.  
+Else `FAIL` or `INCOMPLETE` (mid-stop / skip / guess).
 
 ## Parameters
 
@@ -90,18 +44,17 @@ AND no unresolved blocking exceptions
 | `--full` / `--targeted` | full | Scope |
 | `--init-only` | — | Scaffold only |
 | `--no-fix` | — | No app edits |
-| `--quick` | — | Skip confirm gates |
-| `--explore` | — | No Probe gate; draft before reuse claims |
+| `--quick` | — | Skip confirms |
+| `--explore` | — | No Probe gate; draft before reuse |
 
 ## Workflow
 
 ```
-- [ ] Step 0: Parse target ⛔
-- [ ] Step 1: Ensure .loopfix/ ⛔
+- [ ] Step 0–1: Parse + init .loopfix/ ⛔ (+ agent-browser check)
 - [ ] Step 2: Knowledge + Scope
 - [ ] Step 3: Select/create Flow Probe ⛔
 - [ ] Step 4: Confirm ⚠️ (skip if --quick)
-- [ ] Step 5: browser-orchestrator execute → Evidence ⚠️
+- [ ] Step 5: browser-orchestrator → Evidence ⚠️
 - [ ] Step 6: Flow Result + Failure Router
 - [ ] Step 7: Repair + re-run ⚠️
 - [ ] Step 8: Promote + Knowledge
@@ -110,110 +63,61 @@ AND no unresolved blocking exceptions
 
 ## Step 0–1
 
-Parse args.
-
-**Before any browser work** ⛔:
-
 ```bash
 node <suite>/browser-orchestrator/scripts/check_agent_browser.js
-# missing → stop; tell user:
-#   npx skills add vercel-labs/agent-browser
-#   npm install -g agent-browser
-#   agent-browser install
+node <suite>/loopfix/scripts/init_loopfix.js
 ```
 
-Init project: `node <loopfix_skill>/scripts/init_loopfix.js`  
-(`<loopfix_skill>` = `loopfix/loopfix/` in suite)
+Missing CLI → stop; install steps in `browser-orchestrator/references/agent-browser-dependency.md`.
 
 ## Step 2: Knowledge + Scope
 
-Need-based read under `knowledge/`.  
-Load `references/validation-scope.md`. Success = business goal.
+Need-based `knowledge/` read. Load `references/validation-scope.md`. Success = business goal.
 
 ## Step 3: Flow Probe ⛔
 
-Load `references/probe-format.md` + `references/registry-format.md`.
-
-1. `browser/index.yaml` → pick flow id  
-2. Load **that** Probe only; prefer verified > ready > draft  
-3. No match → write draft Probe + index entry **now**  
-4. Gate: Probe file on disk before leave
+Load `references/probe-format.md` + `references/registry-format.md`.  
+`browser/index.yaml` → one Probe (verified > ready > draft). No match → write draft + index now. File on disk before leave.
 
 ## Step 4: Confirm ⚠️
 
-Unless `--quick`: flow id, path, status, phase counts, Action refs, fixes allowed.  
-No browser until confirm + Probe (unless `--explore`).
+Unless `--quick`: flow id, path, status, phase counts, fixes allowed. No browser until confirm + Probe.
 
-## Step 5: Execute via browser-orchestrator → Evidence ⚠️
-
-**Do not** drive the browser click-by-click in chat. Delegate:
+## Step 5: Orchestrator ⚠️
 
 ```bash
-node <suite>/browser-orchestrator/scripts/run_workflow.js <workflow-id> --cwd <project> --dry-run
-node <suite>/browser-orchestrator/scripts/run_workflow.js <workflow-id> --cwd <project> [--base-url <url>]
+node <suite>/browser-orchestrator/scripts/run_workflow.js <workflow-id> --cwd <project> [--dry-run] [--base-url <url>]
 ```
 
-`<suite>` = parent dir containing `loopfix/` + `browser-orchestrator/`.
+| Status | Next |
+|--------|------|
+| `PASS` | Step 6 |
+| `FAIL` | Step 6 Failure Router |
+| `UNKNOWN_ACTION` | Ask → `.loopfix/browser/actions/` → re-run |
 
-Session sticky is handled inside `run_workflow.js` via loopfix `browser_env.js`.
+Load `references/evidence-format.md` for attribution merge.  
+Ad-hoc `console`/`network` only in Step 6 — load `references/agent-browser-cli.md`.
 
-| Script status | loopfix next |
-|---------------|----------------|
-| `PASS` | Step 6 (may still Failure-Router edge cases) |
-| `FAIL` | Step 6 Failure Router on Evidence |
-| `UNKNOWN_ACTION` | Ask user → write `.loopfix/browser/actions/` → re-run script |
-
-Load `references/evidence-format.md` when merging orchestrator Evidence into Flow Result.  
-Ad-hoc `agent-browser console/network` **only** inside Failure Router (Step 6) — not for walking the happy path.
-
-**Ban:** bare step-click loops; `close --all` on shared session.
-
-## Step 6: Flow Result + Failure Router
+## Step 6: Failure Router
 
 Compute PASS/FAIL/INCOMPLETE.  
-If not PASS → load `references/failure-router.md`; fill `verdict`/`category`/`reason`/`suggestion`/`debug_order_checked`.  
-No Action edit unless `ACTION_ERROR` or `BROWSER_ERROR`.
+If not PASS → load `references/failure-router.md`. No Action edit unless `ACTION_ERROR` / `BROWSER_ERROR`.
 
-## Step 7: Repair + re-run ⚠️
+## Step 7: Repair ⚠️
 
-Load `references/repair-principles.md`.
+Load `references/repair-principles.md`.  
+APPLICATION/API → confirm (unless `--quick`/`--no-fix`) → fix → re-run orchestrator.  
+Ban sleep-to-pass / drop expects.
 
-| Category | Do |
-|----------|-----|
-| `APPLICATION_ERROR` / `API_ERROR` | Unless `--no-fix`: list files + reason; **confirm** (skip if `--quick`); fix app/API; re-run Probe |
-| `ACTION_ERROR` / `BROWSER_ERROR` | Fix Action/env; re-run |
-| `UNKNOWN` | More Evidence / ask — no blind Action patch |
+## Step 8–9
 
-Ban sleep-to-pass / drop expects / skip broken business step in scripts.
+Load `references/knowledge-rules.md`. Promote Probe `verified`; patterns → `knowledge/patterns/`.  
+Report: Flow Result + category/reason + Evidence path + fix target + Knowledge paths.
 
-## Step 8: Promote + Knowledge
+## Anti-Patterns / Pre-Delivery
 
-Load `references/knowledge-rules.md`.  
-Refine Probe/Actions; Flow PASS → `verified`; patterns → `knowledge/patterns/`; update index.
-
-## Step 9: Report
-
-Flow Result + verdict/category/reason + Evidence path + fix target (app vs action) + Knowledge paths.
-
-## Anti-Patterns
-
-- Click robot / snapshot every step (use browser-orchestrator)
-- Re-explore known Action
-- Hang/loading-stuck blamed on "browser slow" first
-- Patch Action to hide app bug
-- Step PASS as Flow PASS
-- Project recipes in skill
-- Lazy Probe after explore
-- Cold `open` without session/restore (forces re-login)
-- `close --all` killing shared project session
-
-## Pre-Delivery Checklist
-
-- [ ] Execution via `run_workflow.js` — not manual click loop
-- [ ] Flow Result honest (INCOMPLETE when mid-stop)
-- [ ] FAIL/INCOMPLETE has Failure Router category; debug order ok
-- [ ] No Action edit on APPLICATION/API without confirm/override
-- [ ] UNKNOWN_ACTION → project Action file, not skill
+- Step-click; Action-first on app bugs; Step PASS as Flow PASS; recipes in skill; `close --all`
+- [ ] Ran `run_workflow.js` (not click loop)
+- [ ] Honest Flow Result + Failure Router category when fail
+- [ ] UNKNOWN_ACTION → project Action only
 - [ ] No sleep/skip/drop-expect to force green
-- [ ] Headed + restore session; sparse screenshots
-- [ ] Did not `close --all` on project session
