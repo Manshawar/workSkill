@@ -1,43 +1,60 @@
 ---
 name: vf-fix
-description: "前端最小修复（vf 族）：优先靠代码与引用关系定位并修好；修不好再开 agent-browser 取证。开发中或 vf-e2e FAIL 后用。Use when: vf-fix, 页面上不对帮我修, 提交没反应, 弹窗/列表状态错了, 联调修 bug, e2e 失败修一下, browser 看看再修。Not for: 只验证(→vf-e2e), 写测试平台, 扫全站, 无证据猜改, 只沉淀(→vf-mry), 一上来就开 browser。"
+description: "前端最小修复（vf 族）：优先代码+引用关系；缺关键信息必须先问用户，禁止猜着改；不够再开 agent-browser。Use when: vf-fix, 页面上不对帮我修, 提交没反应, 联调修 bug, e2e 失败修一下。Not for: 只验证(→vf-e2e), 无证据/缺信息还硬改, 登录墙自试, 一上来就开 browser, 只沉淀(→vf-mry)。"
 ---
 
 # vf-fix
 
 ## Iron Law
 
-**分级修复：能靠代码修好就不开 browser。无证据（代码或运行时）→ 禁止改。**
+**分级修复：能靠代码修好就不开 browser。缺关键信息 → 先问用户，禁止猜着改。无证据 → 禁止改。**
 
 ```text
-L1 代码+引用（默认）→ L2 browser 取证（仅缺口）→ 最小改 → L3 复核
+信息门控 → L1 代码+引用 → L2 browser(仅缺口) → 最小改 → L3 复核
 ```
 
-Red Flags：未读引用就开 browser · 无证据瞎改 · 大重构顺便优化 · spec 塞诊断 log · browser 闲逛整站
+Red Flags：缺信息还连改多次 · 未读引用就开 browser · 无证据瞎改 · 大重构顺便优化 · spec 塞诊断 · browser 闲逛整站 · 登录墙自试账密/SSO
 
 兄弟：`vf-e2e` 验不修 · `vf-fix` 探+修 · `vf-mry` 沉淀不修
 
-## L1 何时够 / 何时上 L2
+## 信息门控 ⚠️（改代码前）
 
-**L1 够**：异常栈、类型错误、逻辑/条件反了、import/调用链断了、与 `.verify/knowledge` 规则直接冲突。
+Ask：下列关键信息是否已从用户/报错/index **明确拿到**？缺任一项 → **停下来问**，勿用「大概是…」填洞。
 
-**上 L2**：缺运行时状态、真实 DOM/网络、仅代码钉不死根因。
+| 关键信息 | 缺则问 |
+|---|---|
+| 正确行为 | 修好后应该怎样？ |
+| 当前异常 | 实际看到什么？能否复现？ |
+| 约束 | 哪些文件/行为不能动？ |
+| 证据线索 | 有无报错原文 / 接口 / 截图描述？ |
+| 登录（仅 L2/复核需要进页时） | 怎么进系统？ |
 
-L1 必做：读报错/diff/相关源码（勿扫全库）→ 追引用（import · props/emit · store/API · 路由 · 父子调用）→ Ask：改 A 会不会打断 B？类型/默认值/异步是否一致？
+本轮用户已答过或 knowledge 已有 → 直接用，勿重复问。  
+**一次修复未达预期 → 禁止静默再猜一轮；必须带着缺口问题问用户。**
 
-L2 证据：`network → console → 文本/定位 → 截图(末手段,≤1张)`。遵循 agent-browser skill；取缺口即停。
+**登录墙：** 跳登录页 / 401 / session 失效 → 立刻停，问如何登录；禁止自试。
+
+## L1 / L2
+
+**L1 够**：异常栈、类型错误、逻辑反了、引用断了、与 knowledge 冲突。  
+**上 L2**：缺运行时 DOM/网络、代码钉不死。
+
+L1：读报错/diff/相关源码（勿扫全库）→ 追引用（import · props/emit · store/API · 路由 · 父子）→ Ask：改 A 会不会打断 B？
+
+L2：`network → console → 文本/定位 → 截图(≤1)`。agent-browser skill；取缺口即停。若遇登录墙 → 回信息门控。
 
 ## Workflow
 
 ```
 vf-fix Progress:
 - [ ] Step 1: 有则读 .verify/index.json；无则跳过
-- [ ] Step 2: L1 代码 + 引用链 ⛔
-- [ ] Step 3a (conditional): L1 钉死 → 最小改
-- [ ] Step 3b (conditional): L1 不够 → L2 browser 取证 → 最小改
-- [ ] Step 4: 仍不清 → 问用户 ⚠️（正确行为？异常？约束？）再改
-- [ ] Step 5: L3 复核 — 优先静态/已有手段；关键闭环不定再用 browser 点关键点
-- [ ] Step 6: 可选 → vf-e2e / vf-mry
+- [ ] Step 2: 信息门控 ⚠️ — 缺关键信息先问；齐了再往下
+- [ ] Step 3: L1 代码 + 引用链 ⛔
+- [ ] Step 4a (conditional): L1 钉死 → 最小改
+- [ ] Step 4b (conditional): L1 不够 → L2 取证（登录墙先问）→ 最小改
+- [ ] Step 5: 修不好 / 仍不清 → 再问用户 ⚠️（带上已排除项与缺口），禁止静默连改
+- [ ] Step 6: L3 复核 — 优先静态；关键闭环不定再用 browser 点关键点
+- [ ] Step 7: 可选 → vf-e2e / vf-mry
 ```
 
 ## 输出
@@ -45,6 +62,7 @@ vf-fix Progress:
 ```text
 层级: L1|L1+L2
 问题: <一句>
+已确认信息: <用户/报错给出的关键点>
 证据: <代码引用/报错 或 network/console>
 原因: <一句>
 改动: <文件 + 改了什么>
@@ -54,8 +72,8 @@ vf-fix Progress:
 
 ## Anti-Patterns / Pre-Delivery
 
-禁止：跳过 L1 直接 browser · L2 取证后不改就结束 · 无证据改代码 · 改无关文件 · 造大量测试 · 逐步截图 · 诊断写进 spec
+禁止：缺信息硬猜 · 修不好还不问 · 跳过 L1 直接 browser · L2 探完不改 · 无证据改代码 · 改无关文件 · 登录墙自试 · 诊断写进 spec
 
-- [ ] 先走完 L1 引用分析；browser 仅因缺口
-- [ ] 有证据链且已最小改；输出含「层级」
+- [ ] 信息门控过了（或已问清）再改
+- [ ] 先 L1；browser 仅缺口；输出含「层级」「已确认信息」
 - [ ] L3 复核完成
