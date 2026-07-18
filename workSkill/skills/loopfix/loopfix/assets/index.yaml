@@ -1,8 +1,0 @@
-version: 1
-
-flows:
-  example-login:
-    description: Example login visibility check (safe to delete)
-    path: probes/example/login.yaml
-    tags: [example, auth]
-    status: draft
