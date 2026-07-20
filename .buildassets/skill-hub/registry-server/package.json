@@ -1,9 +1,9 @@
 {
-  "name": "registry-server",
+  "name": "skill-hub-server",
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "skill-install 命令层源码(tsup 打包成单文件 bin/registry.js)。CLI 子命令 + serve 子命令同入口。详见 skill-install/DESIGN.md §八.2 / §九。",
+  "description": "skill-hub 命令层源码(tsup 打包成单文件 bin/registry.js)。CLI 子命令 + serve 子命令同入口。详见 skills/skill-hub/DESIGN.md §八.2 / §九。",
   "bin": {
     "registry.js": "dist/registry.js"
   },

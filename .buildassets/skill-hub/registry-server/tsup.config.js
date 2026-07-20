@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup'
 
 // 打包成单文件 CJS/ESM,落地到本仓 dist/registry.js。
-// 发布动作:把 dist/registry.js 拷进 skill-install/bin/registry.js(随包分发)。
+// 发布动作:把 dist/registry.js 拷进 skill-hub/bin/registry.js(随包分发)。
 // 阶段 1 才填真正的入口与 core,此处仅骨架。
 export default defineConfig({
   entry: ['src/registry.js'],

@@ -3,40 +3,7 @@
   "auto_copy": null,
   "node_available": true,
   "git_user_email": "",
-  "repositories": [
-    {
-      "path": "~/work/project-a",
-      "alias": "project-a",
-      "display_name": "",
-      "git_remote": "https://git.example.com/team/project-a.git",
-      "added_at": "2026-07-08T12:10:21Z",
-      "last_used_at": "2026-07-08T12:38:23Z"
-    },
-    {
-      "path": "~/work/project-b",
-      "alias": "knowledge-library",
-      "display_name": "",
-      "git_remote": "https://git.example.com/team/project-b.git",
-      "added_at": "2026-07-08T12:12:17Z",
-      "last_used_at": "2026-07-08T12:38:23Z"
-    },
-    {
-      "path": "~/work/project-c",
-      "alias": "ToDoTask",
-      "display_name": "",
-      "git_remote": "https://git.example.com/team/project-c.git",
-      "added_at": "2026-07-08T12:12:17Z",
-      "last_used_at": "2026-07-08T12:38:23Z"
-    },
-    {
-      "path": "/Volumes/other/mySkills",
-      "alias": "mySkills",
-      "display_name": "",
-      "git_remote": "https://github.com/Manshawar/workSkill.git",
-      "added_at": "2026-07-08T12:38:18Z",
-      "last_used_at": "2026-07-08T12:38:23Z"
-    }
-  ],
+  "repositories": [],
   "role_definitions": {
     "前端": {
       "use_git": true,
@@ -88,5 +55,5 @@
       ]
     }
   },
-  "_hint": "role: 空 → 弹角色选择;auto_copy: null → 弹\"是否启用剪贴板\";git_user_email: 顶层共享;repositories: 用 save-repo 管理;role_definitions: 5 角色元数据"
+  "_hint": "role: 空 → 弹角色选择;auto_copy: null → 弹\"是否启用剪贴板\";git_user_email: 顶层共享;repositories: 用 save-repo 管理;role_definitions: 5 角色元数据。首跑 init 后由 daily-report.js 自动写入真实数据。"
 }

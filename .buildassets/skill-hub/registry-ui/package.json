@@ -1,9 +1,9 @@
 {
-  "name": "skill-installer-ui",
+  "name": "skill-hub-ui",
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "React UI for skill-installer registry maintenance. 源码工程,构建产物拷入 skill 包 ui/ 随包分发。详见 ../DESIGN.md §八.8 / §九。",
+  "description": "React UI for skill-hub registry maintenance. 源码工程,构建产物拷入 skill 包 ui/ 随包分发。详见 ../../skills/skill-hub/DESIGN.md §八.8 / §九。",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

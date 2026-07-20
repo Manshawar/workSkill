@@ -1,6 +1,6 @@
 # skills (`npx skills`) — 接口参考
 
-`npx skills` 是开放 agent skills 生态的 CLI。本文件是 **AI 在 skill-installer 工作流中需要安装/卸载/列举/更新 skill 时查阅的接口参考**,聚焦 **claude-code、非交互、原子化按需** 场景。
+`npx skills` 是开放 agent skills 生态的 CLI。本文件是 **AI 在 skill-hub 工作流中需要安装/卸载/列举/更新 skill 时查阅的接口参考**,聚焦 **claude-code、非交互、原子化按需** 场景。
 
 > 本文件是上游 [vercel-labs/skills](https://github.com/vercel-labs/skills) README 的 claude-code 精简提取版。被删减的内容(70+ agent 全表、完整发现目录、完整外链等)可经上游 re-sync 还原——本地精简不构成信息丢失。
 
