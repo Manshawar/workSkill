@@ -4,7 +4,7 @@
 //           collect-commits.sh, gather-commits.sh, copy-to-clipboard.js
 // Usage:
 //   node scripts/daily-report.js init [--role <角色>] [--auto-copy <bool>]
-//   node scripts/daily-report.js gather --repos <json-array> --date YYYY-MM-DD [--author <email>]
+//   node scripts/daily-report.js gather [--date YYYY-MM-DD] [--user-repo <path>...] [--day-end HH:MM] [--author <email>]
 //   node scripts/daily-report.js clipboard   (stdin = content to copy)
 //   node scripts/daily-report.js save-repo --path <path> [--alias <alias>] [--cwd] [--touch]
 //   node scripts/daily-report.js list-repos [--json] [--current]
@@ -14,10 +14,17 @@ const path = require('path');
 const { execSync, spawn } = require('child_process');
 
 // ─── Paths ──────────────────────────────────────────────────────────────
+// 运行时记忆在 skill 包外：<skills 的父目录>/.daily-report/
+// 例: mySkills/skills/daily-report → mySkills/.daily-report
+//     ~/.claude/skills/daily-report → ~/.claude/.daily-report
+// 与 vf 族 .verify/ 同思路：update skill 不丢本地记忆
 const SKILL_DIR = path.resolve(__dirname, '..');
-const MEMORY_DIR = path.join(SKILL_DIR, 'memory');
+const MEMORY_DIR = path.resolve(SKILL_DIR, '..', '..', '.daily-report');
 const SETTING_PATH = path.join(MEMORY_DIR, 'setting.json');
-const LEGACY_CONFIG = path.join(MEMORY_DIR, 'daily-report-config.json');
+const HISTORY_DIR = path.join(MEMORY_DIR, 'history');
+const LEGACY_SKILL_MEMORY = path.join(SKILL_DIR, 'memory');
+const LEGACY_SETTING = path.join(LEGACY_SKILL_MEMORY, 'setting.json');
+const LEGACY_CONFIG = path.join(LEGACY_SKILL_MEMORY, 'daily-report-config.json');
 
 // ─── Default setting.json template ──────────────────────────────────────
 const DEFAULT_SETTING = {
@@ -25,6 +32,7 @@ const DEFAULT_SETTING = {
   auto_copy: null,
   node_available: true,
   git_user_email: '',
+  day_end_min: '20:30', // 黑心下班下限；偶发加班改 setting 或 gather --day-end 21:00
   repositories: [],
   role_definitions: {
     '前端': { use_git: true,  soft_work_categories: ['联调', '提测', 'UI 走查', 'code review', '配合后端'] },
@@ -33,12 +41,53 @@ const DEFAULT_SETTING = {
     '测试': { use_git: false, soft_work_categories: ['走查', '复现 bug', '配合开发排查', '验收', '回归'] },
     '产品': { use_git: false, soft_work_categories: ['需求评审', '写 PRD', '用户访谈', '走查', '验收'] },
   },
-  _hint: 'role: 空 → 弹角色选择;auto_copy: null → 弹"是否启用剪贴板";git_user_email: 顶层共享;repositories: 用 save-repo 管理;role_definitions: 5 角色元数据',
+  _hint: 'role: 空 → 弹角色选择;auto_copy: null → 弹"是否启用剪贴板";day_end_min: 黑心下班下限默认 20:30;git_user_email: 顶层共享;repositories: 用 save-repo 管理;role_definitions: 5 角色元数据',
 };
 
 // ─── Utility ─────────────────────────────────────────────────────────────
 function ensureMemoryDir() {
   fs.mkdirSync(MEMORY_DIR, { recursive: true });
+}
+
+/** 把 skill 内旧 memory/ 迁到包外 .daily-report/（仅当新位置尚无 setting） */
+function migrateLegacyMemory() {
+  if (fs.existsSync(SETTING_PATH)) return;
+
+  ensureMemoryDir();
+
+  // 优先: skills/.../memory/setting.json
+  if (fs.existsSync(LEGACY_SETTING)) {
+    fs.copyFileSync(LEGACY_SETTING, SETTING_PATH);
+    console.error(`✅ 已迁移记忆: ${LEGACY_SETTING} → ${SETTING_PATH}`);
+    return;
+  }
+
+  // 次选: 更老的 daily-report-config.json
+  if (fs.existsSync(LEGACY_CONFIG)) {
+    const legacy = JSON.parse(fs.readFileSync(LEGACY_CONFIG, 'utf8'));
+    const gitUser = (legacy.repositories || [])
+      .map(r => r.git_user || '')
+      .filter(Boolean)[0] || '';
+    const migrated = {
+      ...DEFAULT_SETTING,
+      role: legacy.role || '',
+      auto_copy: legacy.auto_copy ?? null,
+      node_available: legacy.node_available ?? true,
+      git_user_email: gitUser,
+      day_end_min: legacy.day_end_min || DEFAULT_SETTING.day_end_min,
+      repositories: (legacy.repositories || []).map(r => ({
+        path: r.path,
+        alias: r.alias,
+        display_name: r.display_name || '',
+        git_remote: r.git_remote || '',
+        added_at: r.added_at || isoNow(),
+        last_used_at: r.last_used_at || isoNow(),
+      })),
+      role_definitions: legacy.role_definitions || DEFAULT_SETTING.role_definitions,
+    };
+    writeSetting(migrated);
+    console.error(`✅ 已迁移旧 config: ${LEGACY_CONFIG} → ${SETTING_PATH}`);
+  }
 }
 
 function readSetting() {
@@ -63,29 +112,7 @@ function isoNow() {
 // ─── init subcommand ────────────────────────────────────────────────────
 function cmdInit(args) {
   ensureMemoryDir();
-
-  // Migrate legacy config.json → setting.json
-  if (fs.existsSync(LEGACY_CONFIG) && !fs.existsSync(SETTING_PATH)) {
-    const legacy = JSON.parse(fs.readFileSync(LEGACY_CONFIG, 'utf8'));
-    const gitUser = (legacy.repositories || [])
-      .map(r => r.git_user || '')
-      .filter(Boolean)[0] || '';
-    const migrated = {
-      role: legacy.role || '',
-      auto_copy: legacy.auto_copy ?? null,
-      node_available: legacy.node_available ?? true,
-      git_user_email: gitUser,
-      repositories: (legacy.repositories || []).map(r => ({ ...r, git_user: undefined })),
-      role_definitions: legacy.role_definitions || DEFAULT_SETTING.role_definitions,
-    };
-    // Clean up undefined fields from map
-    migrated.repositories = (legacy.repositories || []).map(r => {
-      const clean = { path: r.path, alias: r.alias, git_remote: r.git_remote || '', added_at: r.added_at || isoNow(), last_used_at: r.last_used_at || isoNow() };
-      return clean;
-    });
-    writeSetting(migrated);
-    fs.unlinkSync(LEGACY_CONFIG);
-  }
+  migrateLegacyMemory();
 
   // Create setting.json if not exists
   if (!fs.existsSync(SETTING_PATH)) {
@@ -109,6 +136,23 @@ function cmdInit(args) {
     setting = readSetting();
   }
 
+  // Write back day_end_min if provided (HH:MM)
+  if (args.dayEnd) {
+    if (!/^\d{1,2}:\d{2}$/.test(args.dayEnd)) {
+      console.error('❌ --day-end 格式必须为 HH:MM，如 20:30');
+      process.exit(1);
+    }
+    setting.day_end_min = args.dayEnd;
+    writeSetting(setting);
+    setting = readSetting();
+  }
+
+  // Migrate: 旧 setting 无 day_end_min → 补默认 20:30
+  if (!setting.day_end_min) {
+    setting.day_end_min = DEFAULT_SETTING.day_end_min;
+    writeSetting(setting);
+  }
+
   // Detect node availability (always true since we're running in node)
   setting.node_available = true;
 
@@ -125,6 +169,7 @@ function cmdInit(args) {
     auto_copy: setting.auto_copy,
     node_available: setting.node_available,
     git_user_email: setting.git_user_email,
+    day_end_min: setting.day_end_min || DEFAULT_SETTING.day_end_min,
     repositories: setting.repositories,
     categories,
     use_git: useGit,
@@ -134,23 +179,22 @@ function cmdInit(args) {
 
 // ─── gather subcommand ──────────────────────────────────────────────────
 function cmdGather(args) {
-  if (!args.repos && !args.userRepos) {
-    console.error('usage: daily-report.js gather --repos <json-array> [--user-repo <path>...] [--date YYYY-MM-DD] [--author <email>]');
-    process.exit(1);
-  }
-
-  // 1) 解析输入仓库列表
+  // 1) 解析输入仓库列表：--repos 显式 JSON；否则自动读 setting.repositories
+  const setting = readSetting();
   let repos = [];
   if (args.repos) {
     try { repos = JSON.parse(args.repos); } catch (e) {
       console.error('❌ --repos JSON 解析失败：', e.message);
       process.exit(1);
     }
+  } else if (setting?.repositories?.length) {
+    repos = [...setting.repositories].sort((a, b) =>
+      (b.last_used_at || '').localeCompare(a.last_used_at || '')
+    );
   }
 
   // 2) 必做: 探测 cwd git repo, 合并进 repos 列表 (Step 1 铁律)
   //    即使 --repos 已传, 也要探测 cwd — 用户给的不能替代 cwd
-  const setting = readSetting();
   const now = isoNow();
   const cwd = process.cwd();
   const cwdIsGit = !!tryExec(`git -C "${cwd}" rev-parse --git-dir`);
@@ -252,9 +296,9 @@ function cmdGather(args) {
     // 0 commit → 静默跳过, 不输出 entry (避免模型困惑"这个仓库要不要用")
     if (commits.length === 0) continue;
 
-    // 4) Hours: prefer real session span from commit timestamps (黑心老板下限 19:30).
-    //    Fall back to commit-type estimate when no timestamps available.
-    const repoHours = computeSessionHours(commits, date);
+    // 4) Hours: commit 时间差；终点下限 = --day-end > setting.day_end_min > 20:30
+    const dayEndMin = args.dayEnd || setting?.day_end_min || DEFAULT_SETTING.day_end_min;
+    const repoHours = computeSessionHours(commits, date, dayEndMin);
     const items = commits.map(c => ({
       commit: c.subject,
       time: c.time,
@@ -393,8 +437,9 @@ function collectCommits(repoPath, date, author) {
 // Rules:
 //   - 0 commit: 0
 //   - 1 commit: 默认 1.5h (1-2h 中位，单 commit 无法测时长)
-//   - 2+ commits: start = first, end = max(last, 19:30 下限), cap [0.5, 14]
-function computeSessionHours(commits, date) {
+//   - 2+ commits: start = max(first, 09:00), end = max(last, dayEndMin), cap [0.5, 14]
+// dayEndMin: HH:MM，默认 20:30（setting.day_end_min / --day-end）
+function computeSessionHours(commits, date, dayEndMinStr = '20:30') {
   if (commits.length === 0) return 0;
 
   // 单 commit：无法测真实时长，按 1.5h 中位估
@@ -404,8 +449,9 @@ function computeSessionHours(commits, date) {
   const first = sorted[0].time;
   const last = sorted[sorted.length - 1].time;
 
+  const endHHMM = /^\d{1,2}:\d{2}$/.test(dayEndMinStr) ? dayEndMinStr : '20:30';
   const dayStart = new Date(`${date}T09:00:00`);
-  const dayEndMin = new Date(`${date}T19:30:00`);
+  const dayEndMin = new Date(`${date}T${endHHMM}:00`);
 
   const startSec = Math.max(first, Math.floor(dayStart.getTime() / 1000));
   const endSec = Math.max(last, Math.floor(dayEndMin.getTime() / 1000));
@@ -455,6 +501,83 @@ function cmdClipboard() {
 
   child.stdin.write(input);
   child.stdin.end();
+}
+
+// ─── emit subcommand ────────────────────────────────────────────────────
+// Print sheetTime to stdout; archive to .daily-report/history/; copy daily when auto_copy.
+function saveHistory(date, daily, sheetLine) {
+  fs.mkdirSync(HISTORY_DIR, { recursive: true });
+  const filePath = path.join(HISTORY_DIR, `${date}.md`);
+  const body = [
+    `# 日报 ${date}`,
+    '',
+    sheetLine,
+    '',
+    daily.trimEnd(),
+    '',
+    `<!-- emitted_at: ${isoNow()} -->`,
+    '',
+  ].join('\n');
+  fs.writeFileSync(filePath, body, 'utf8');
+  return filePath;
+}
+
+function cmdEmit(args) {
+  const daily = args.daily || '';
+  const sheetTime = (args.sheetTime || '').trim();
+  if (!daily.trim()) {
+    console.error('usage: daily-report.js emit --daily "<分点>" --sheet-time "<单行概括>" [--date YYYY-MM-DD] [--no-clipboard]');
+    process.exit(1);
+  }
+
+  const date = args.date || new Date().toISOString().slice(0, 10);
+
+  // 1) sheetTime 打印到 stdout（前缀由 emit 加）
+  const sheetLine = sheetTime.startsWith('sheetTime:')
+    ? sheetTime
+    : `sheetTime: ${sheetTime}`;
+  console.log(sheetLine);
+  console.log('');
+  console.log(daily.trimEnd());
+
+  // 2) 落盘归档（同日重跑覆盖）
+  try {
+    const saved = saveHistory(date, daily, sheetLine);
+    console.error(`✅ 已归档: ${saved}`);
+  } catch (e) {
+    console.error(`⚠️ 归档失败（不阻断）: ${e.message}`);
+  }
+
+  // 3) 剪贴板：仅分点；失败不阻断
+  const setting = readSetting();
+  const skipClip = args.noClipboard || setting?.auto_copy !== true;
+  if (skipClip) return;
+
+  const platform = process.platform;
+  let cmd, cmdArgs;
+  if (platform === 'darwin') {
+    cmd = 'pbcopy'; cmdArgs = [];
+  } else if (platform === 'win32') {
+    cmd = 'clip'; cmdArgs = [];
+  } else {
+    // cspell:disable-next-line
+    cmd = 'xclip'; cmdArgs = ['-selection', 'clipboard'];
+  }
+
+  try {
+    const child = spawn(cmd, cmdArgs, { stdio: ['pipe', 'ignore', 'pipe'] });
+    child.on('error', () => {
+      console.error('⚠️ 剪贴板不可用，日报已打印到 stdout，请手动复制');
+    });
+    child.on('exit', code => {
+      if (code === 0) console.error('✅ 已自动复制到剪贴板（仅分点）');
+      else console.error('⚠️ 剪贴板复制失败，日报已打印到 stdout，请手动复制');
+    });
+    child.stdin.write(daily);
+    child.stdin.end();
+  } catch {
+    console.error('⚠️ 剪贴板失败，日报已打印到 stdout，请手动复制');
+  }
 }
 
 // ─── save-repo subcommand ───────────────────────────────────────────────
@@ -655,6 +778,10 @@ function parseArgs(rawArgs) {
       case '--repos':     args.repos = rawArgs[++i]; break;
       case '--date':      args.date = rawArgs[++i]; break;
       case '--author':    args.author = rawArgs[++i]; break;
+      case '--day-end':   args.dayEnd = rawArgs[++i]; break;
+      case '--daily':     args.daily = rawArgs[++i]; break;
+      case '--sheet-time': args.sheetTime = rawArgs[++i]; break;
+      case '--no-clipboard': args.noClipboard = true; break;
       case '--user-repo':
         args.userRepos = args.userRepos || [];
         args.userRepos.push(rawArgs[++i]);
@@ -684,11 +811,12 @@ switch (command) {
   case 'init':       cmdInit(args); break;
   case 'gather':     cmdGather(args); break;
   case 'clipboard':  cmdClipboard(); break;
+  case 'emit':       cmdEmit(args); break;
   case 'save-repo':  cmdSaveRepo(args); break;
   case 'list-repos': cmdListRepos(args); break;
   case 'set-display-name': cmdSetDisplayName(args); break;
   default:
     console.error(`unknown command: ${command}`);
-    console.error('available: init, gather, clipboard, save-repo, list-repos');
+    console.error('available: init, gather, clipboard, emit, save-repo, list-repos, set-display-name');
     process.exit(1);
 }

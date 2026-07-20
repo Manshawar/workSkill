@@ -3,6 +3,7 @@
   "auto_copy": null,
   "node_available": true,
   "git_user_email": "",
+  "day_end_min": "20:30",
   "repositories": [],
   "role_definitions": {
     "前端": {
@@ -55,5 +56,5 @@
       ]
     }
   },
-  "_hint": "role: 空 → 弹角色选择;auto_copy: null → 弹\"是否启用剪贴板\";git_user_email: 顶层共享;repositories: 用 save-repo 管理;role_definitions: 5 角色元数据。首跑 init 后由 daily-report.js 自动写入真实数据。"
+  "_hint": "role: 空 → 弹角色选择;auto_copy: null → 弹\"是否启用剪贴板\";day_end_min: 黑心下班下限默认 20:30（加班改 21:00 或 gather --day-end）;git_user_email: 顶层共享;repositories: 用 save-repo 管理;role_definitions: 5 角色元数据。首跑 init 后由 daily-report.js 自动写入真实数据。"
 }

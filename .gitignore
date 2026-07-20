@@ -42,6 +42,7 @@ plan.md
 # ── Claude / skills 本地运行时缓存 ──────────────────────
 .memory/
 .memos/
+.daily-report/          # daily-report 运行时记忆（角色/仓库/下班下限），update skill 不丢
 skills/*/memory/
 local-settings.json
 .claude/settings.local.json

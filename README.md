@@ -14,6 +14,7 @@
 | [`skills/vf-fix`](./skills/vf-fix) | ✅ 可用 | 前端最小修复（vf 族）：优先代码+引用关系；缺关键信息先问用户，禁止猜着改；不够再开 agent-browser | `vf-fix` / `页面上不对帮我修` / `提交没反应` / `联调修 bug` / `e2e 失败修一下` |
 | [`skills/vf-e2e`](./skills/vf-e2e) | ✅ 可用 | 低成本前端业务闭环验证（vf 族）：按业务逻辑走完「触发→处理→数据→反馈」四环；真实 UI 操作；产物在 `.verify/`；发现问题不修复 | `vf-e2e` / `验证业务流程` / `走一遍正常流程` / `业务验证` / `回归验证` |
 | [`skills/vf-mry`](./skills/vf-mry) | ✅ 可用 | 前端问题经验沉淀（vf 族）：已确认问题/原因/约束写入本地 `.verify/knowledge/`；只记规则不修代码 | `vf-mry` / `沉淀经验` / `记规则` / `记录修复约束` / `E2E 失败后沉淀` |
+| [`skills/git-submit`](./skills/git-submit) | ✅ 可用 | Git 自动提交 Agent：同步远程(rebase) → 分析 diff → 生成 Conventional Commit 中文消息 → 自动 push；自动识别 Gerrit(`HEAD:refs/for/分支`) vs 普通 git，已有 Change-Id 则 amend 续 Review；只在冲突/拆分/危险文件/推送类型/多消息方案 5 类硬决策处问用户 | `提交代码` / `提交一下` / `git submit` / `commit 并 push` / `推送代码` / `帮我提交` / `走 Gerrit Review` / `提个 review` |
 | [`skills/skill-hub`](./skills/skill-hub) | 🚧 即将实现 | Skill 元数据 + 使用统计 + 推荐系统的注册中心。当前仅有设计文档与参考资料，实现日期待定 | — |
 
 > **vf 族协作关系**：`vf-fix` 探+修 → `vf-e2e` 验不修 → `vf-mry` 沉淀不修。三个 skill 共享项目本地 `.verify/` 目录，互不污染业务代码。
@@ -99,10 +100,8 @@ workSkill/                          # ← GitHub 仓库根 (Manshawar/workSkill)
 ├── skills/                         # ← 规范 skill 容器目录 (npx skills 发现入口)
 │   ├── daily-report/
 │   │   ├── SKILL.md
-│   │   ├── scripts/
-│   │   │   └── daily-report.js     # 零依赖 Node.js, 多 subcommand: init / gather / emit ...
-│   │   └── memory/
-│   │       └── setting.json        # 运行时角色 + 仓库存档 (模板)
+│   │   └── scripts/
+│   │       └── daily-report.js     # 零依赖 Node.js；记忆写在包外 .daily-report/
 │   ├── vf-fix/SKILL.md             # 修复
 │   ├── vf-e2e/SKILL.md             # 验证
 │   ├── vf-mry/SKILL.md             # 沉淀
@@ -113,6 +112,10 @@ workSkill/                          # ← GitHub 仓库根 (Manshawar/workSkill)
 │       │   └── skillsRef.md        # npx skills CLI 接口参考 (AI 调用速查)
 │       ├── bin/                    # 命令层构建产物落地 (registry.js)
 │       └── ui/                     # UI 构建产物落地 (dist/)
+│
+├── .daily-report/                  # daily-report 本地记忆+归档（gitignore；update skill 保留）
+│   ├── setting.json                # 角色 / 仓库存档 / day_end_min
+│   └── history/                    # 每次 emit 落盘：YYYY-MM-DD.md
 │
 └── .buildassets/                   # 外置源码工程 —— 构建产物拷入 skill 包随包分发
     └── skill-hub/                  # 与 skills/skill-hub/ 对应
