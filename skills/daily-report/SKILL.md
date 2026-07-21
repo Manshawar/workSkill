@@ -27,6 +27,7 @@ Daily Report Progress:
 - [ ] Step 2b: 翻译 → set-display-name ⛔ BLOCKING（display_name 空才写）
 - [ ] Step 3: 补齐 ≥ target ⛔ BLOCKING
 - [ ] Step 4: emit（剪贴板纯分点 + sheetTime 单行）⛔ BLOCKING
+- [ ] Step 4.5: 聊天原样贴 emit stdout（须含 sheetTime + 每条 -Xh）⛔ BLOCKING
 - [ ] 交付前自检（见 Step 4.4）
 ```
 
@@ -43,6 +44,7 @@ Daily Report Progress:
 
 - 一律 `node scripts/daily-report.js`，不跑 bash 子脚本
 - 一律 Node 原生 JSON，**不**依赖 `jq`
+- 剪贴板一律 `npx --yes clipboard-cli`（stdin 写入），**不**直接调 pbcopy/clip/xclip
 - 一律 JSON 配置；**记忆与日报归档在 skill 包外** `.daily-report/`（与 vf 族 `.verify/` 同思路，update skill 不丢）
   - 配置：`<skills 父目录>/.daily-report/setting.json`
   - 归档：`.daily-report/history/YYYY-MM-DD.md`（每次 `emit` 自动写，同日覆盖）
@@ -62,13 +64,14 @@ Daily Report Progress:
 | `--append "文本=Xh"` | — | 追加条目 |
 | `--role <前端\|后端\|运维\|测试\|产品>` | memory | 临时切换角色 |
 | `--save-role` | false | 持久化角色到 memory |
-| `--target-hours N` | 8 | 目标总时长（不够时用软工条目补齐） |
+| `--target-hours N` | max(8, session) | 目标总时长下限；**默认不得低于** gather 的 session 工时（只能多不能少） |
 | `--max-items N` | 6 | 最多条目数（超出则合并） |
 | `--show-totals` | false | 末尾追加汇总行（仅聊天展示；**绝不**进剪贴板） |
+| `--day-start HH:MM` | setting / 09:30 | 临时覆盖黑心上班上限（如更早到岗 `08:30` 不必改；晚于默认需用户明示） |
 | `--day-end HH:MM` | setting / 20:30 | 临时覆盖黑心下班下限（如加班 `21:00`） |
 | `--no-clipboard` | — | 临时跳过剪贴板（即便 auto_copy=true） |
 
-**argument-hint**: `[--date YYYY-MM-DD \| --yesterday] [--user-repo <path>]* [--add-repo <path>] [--project <name>] [--role <前端\|后端\|运维\|测试\|产品>] [--append "文本=Xh"]* [--target-hours N] [--max-items N] [--day-end HH:MM] [--show-totals] [--save-role]`
+**argument-hint**: `[--date YYYY-MM-DD \| --yesterday] [--user-repo <path>]* [--add-repo <path>] [--project <name>] [--role <前端\|后端\|运维\|测试\|产品>] [--append "文本=Xh"]* [--target-hours N] [--max-items N] [--day-start HH:MM] [--day-end HH:MM] [--show-totals] [--save-role]`
 
 ## Step 0: 静默初始化（**有历史配置时不弹任何询问**）
 
@@ -82,6 +85,7 @@ Daily Report Progress:
   "auto_copy": true,
   "node_available": true,
   "git_user_email": "...",
+  "day_start_max": "09:30",
   "day_end_min": "20:30",
   "repositories": [...],
   "categories": ["联调", "提测", "UI 走查", "code review", "配合后端"],
@@ -97,6 +101,7 @@ Daily Report Progress:
 | `role = ""` | ❌ | AskUserQuestion 选角色 → `node scripts/daily-report.js init --role "$ROLE"` |
 | `auto_copy = true/false` | ✅ | **跳过询问** |
 | `auto_copy = null` | ❌ | AskUserQuestion "是否启用剪贴板?" → `init --auto-copy "$BOOL"` |
+| `day_start_max` | ✅（默认 09:30） | **跳过询问**；持久改用 `init --day-start 09:00` |
 | `day_end_min` | ✅（默认 20:30） | **跳过询问**；持久改用 `init --day-end 21:00` |
 
 **首次典型流程**（2 次询问 + 2 次 Bash）：
@@ -137,11 +142,16 @@ RESULT=$(node scripts/daily-report.js gather \
 RESULT=$(node scripts/daily-report.js gather --date "$DATE" --day-end 21:00)
 ```
 
-**工时算法（黑心老板版，`computeSessionHours`）**：
-- 0 commit → 0；**1 commit → 1.5h**
-- 2+ commits：起点 = max(最早 commit, 09:00)；终点 = max(最晚 commit, `day_end_min`)
+**工时算法（黑心老板版，`computeSessionHours`）——只能多不能少**：
+- 默认工作窗：**09:30 → 20:30**（= 11h）
+- 0 commit → 0
+- 1+ commits：
+  - 起点 = **min**(最早 commit, `day_start_max`) → 最晚按 09:30 开工，可更早
+  - 终点 = **max**(最晚 commit, `day_end_min`) → 最早按 20:30 下班，可更晚
+- `day_start_max` 优先级：`--day-start` > `setting.day_start_max` > **09:30**
 - `day_end_min` 优先级：`--day-end` > `setting.day_end_min` > **20:30**
 - hours 半小时粒度，cap [0.5, 14]
+- **禁止**把全日窗主动压短；低于默认窗必须用户口头 / `--target-hours` / `--day-start`/`--day-end` 明示
 
 **项目名 → 中文翻译**：gather 输出 `project` 优先级 = `display_name` > `alias`（目录名）> `detectProject` > `【通用】`。模型输出时**必须把英文名译成业务中文**。无明显线索 → `【通用】`。
 
@@ -164,11 +174,12 @@ node scripts/daily-report.js set-display-name \
 用 Step 0 的 `categories` 从「主动型条目池」选类目补齐。
 
 **强制约束**：
-- 总时长 ≥ target（默认 8h）——**硬性违规**不允许低于
+- 有效 target = **max**(`--target-hours` 默认 8, gather 的 `total_hours`)——有 commit 时通常 ≥ 11h（09:30–20:30）
+- 总时长 ≥ 有效 target——**只能多不能少**；用户未明示时禁止压到更少
 - 单条 0.5h ≤ X ≤ 4h，**必须是整数或 .5**
 - 单条日报项目数 ≤ 2（≥3 合并到【通用】）
 - 已 `--append` → 直接用，不叠加
-- commit 已覆盖全天 → 不强行补
+- commit 已覆盖全天 → 不强行补（但总时长仍须 ≥ session）
 - 完全无产出 → 告知「今日完全无产出，是否记录 0h 或事后补 --append」
 
 ---
@@ -243,30 +254,31 @@ N. 【项目名】{动作}{对象}{、补充说明}。- {X.X}小时
 
 ## Step 4: 输出 + 剪贴板
 
-**铁律：两份文本；剪贴板只粘分点；sheetTime 单行。**
+**铁律：两份文本；剪贴板只粘分点；聊天必须同时露出小时与 sheetTime。**
 
 ### 4.1 日报（剪贴板粘这个）
 
 ```
 1. 【日报生成器】重写 detect-project 为 Node.js、合并脚本。-1.5小时
-2. 【日报生成器】工时下限改为 20:30、支持 --day-end。-1小时
+2. 【日报生成器】工时窗改为 09:30–20:30、支持 --day-start。-1小时
 ```
 
 **⛔ 剪贴板铁律（违反任一条 = 输出失败）**：
 1. 不带 `日报:` 前缀 / `---` / 合计行 / 项目小计 / sheetTime / 标题注释
 2. **只**分点：`1. ` `2. ` … 严格递增
-3. 每条：`N. 【项目名】{动作}{对象}{、补充}。- {Xh}`（Xh 整数或 .5）
+3. 每条：`N. 【项目名】{动作}{对象}{、补充}。- {Xh}`（Xh 整数或 .5）——**缺小时 = emit 拒绝**
 
 ### 4.2 sheetTime（单行 ≤80 字）
 
 ```
-sheetTime: 重写 detect-project；工时下限 20:30；支持 day-end 覆盖
+sheetTime: 重写 detect-project；工时窗 09:30–20:30；支持 day-start
 ```
 
 **⛔ sheetTime 铁律**：
 1. 不带分点编号 / `【项目名】` / 小时数 / 换行 / 缩进列表
 2. 单行 ≤80 字，超则前 79 + `…`
 3. 模型自己概括，用 `；` 连接；前缀 `sheetTime: ` 由 `emit` 加
+4. **空 sheetTime = emit 拒绝**
 
 ### 4.3 执行 emit
 
@@ -277,17 +289,39 @@ node scripts/daily-report.js emit \
   --date "$DATE"
 ```
 
-- `$DAILY_REPORT` = 纯分点
+- `$DAILY_REPORT` = 纯分点（每条必须带 `- X小时`）
 - `$SHEET_TIME` = 单行概括（无 `sheetTime:` 前缀）
 - `$DATE` = 日报日期（与 gather 一致；默认今天）
 - `emit` **自动**写入 `.daily-report/history/$DATE.md`（失败不阻断）
+- `emit` stdout = `sheetTime:` 行 + 空行 + 分点；**校验失败则 exit 1，禁止绕过**
+- 剪贴板：`npx --yes clipboard-cli`（仅分点；失败不阻断主流程；需 Node + 网络首次拉包）
 
 ### 4.4 交付前自检 ⛔
 
-- [ ] 总时长 ≥ target
+- [ ] 总时长 ≥ 有效 target（≥ session，只能多不能少）
 - [ ] 剪贴板无合计/`---`/sheetTime
-- [ ] sheetTime 单行 ≤80、无【】/小时数
+- [ ] 每条分点含 `【项目】` 与 `- X小时`
+- [ ] sheetTime 单行 ≤80、无【】/小时数、非空
 - [ ] 无被动型自动条；无编造模块名
+
+### 4.5 聊天交付 ⛔（上次翻车点）
+
+**禁止**把日报改写成无工时摘要。聊天里必须**原样**贴 `emit` 的 stdout，例如：
+
+```
+sheetTime: 修复列表兼容；分页防御；权限 mutation；sass 回退
+
+1. 【车辆调度】修复列表接口数据兼容、列表与审批人分页防御。- 2.5小时
+2. 【车辆调度】修复 PC 端与移动端列表字段适配。- 2小时
+…
+
+已复制到剪贴板；已归档 .daily-report/history/YYYY-MM-DD.md
+```
+
+**违反即失败**：
+- ❌ 聊天只写「共 N 条 X 小时」+ 无 `-Xh` 的标题列表
+- ❌ 聊天漏掉 `sheetTime:` 行
+- ❌ 把 `【项目】` / `- X小时` 剥掉再展示
 
 ---
 
@@ -296,14 +330,17 @@ node scripts/daily-report.js emit \
 **输出层**：
 - ❌ 编造无 commit 支撑的具体 bug/模块 / 硬编码【项目C】
 - ❌ 自动生成被动型（晨会/周会/整理清单/跟进 bug）
-- ❌ 漏写【项目名】 / 工时非 .5 粒度 / emoji /「同事」指代
+- ❌ 漏写【项目名】 / **漏写 -Xh** / 工时非 .5 粒度 / emoji /「同事」指代
+- ❌ 聊天交付吞掉小时或 sheetTime
 - ❌ 收集别人 commit（按 `git_user_email` 过滤）
 - ❌ 单条 >4h 或 <0.5h / 单条日报项目数 ≥3
 - ❌ 剪贴板带合计/`---`/sheetTime；sheetTime 多行/带【】/超 80 无截断
+- ❌ 默认窗内主动压低总工时（未获用户明示）
 
 **流程层**：
 - ❌ 跑 shell/`jq`；每次 Read roles.json
-- ❌ 总时长 < target 仍输出；Ask 了不写回 config
+- ❌ 总时长 < 有效 target 仍输出；Ask 了不写回 config
 - ❌ 剪贴板失败阻断主流程
 - ❌ **给了 `--user-repo` 就跳过 cwd 探测**
 - ❌ 嵌套 `list-repos` 喂 `gather`（gather 无参时已自动读存档）
+- ❌ emit 校验失败后改写摘要糊弄用户

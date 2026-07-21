@@ -11,7 +11,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync, spawn } = require('child_process');
+const { execSync, spawnSync } = require('child_process');
 
 // ─── Paths ──────────────────────────────────────────────────────────────
 // 运行时记忆在 skill 包外：<skills 的父目录>/.daily-report/
@@ -32,7 +32,8 @@ const DEFAULT_SETTING = {
   auto_copy: null,
   node_available: true,
   git_user_email: '',
-  day_end_min: '20:30', // 黑心下班下限；偶发加班改 setting 或 gather --day-end 21:00
+  day_start_max: '09:30', // 黑心上班上限：最晚按此时开工（只能更早，不能更晚）
+  day_end_min: '20:30', // 黑心下班下限：最早按此时下班（只能更晚，不能更早）；加班改 setting 或 gather --day-end 21:00
   repositories: [],
   role_definitions: {
     '前端': { use_git: true,  soft_work_categories: ['联调', '提测', 'UI 走查', 'code review', '配合后端'] },
@@ -41,7 +42,7 @@ const DEFAULT_SETTING = {
     '测试': { use_git: false, soft_work_categories: ['走查', '复现 bug', '配合开发排查', '验收', '回归'] },
     '产品': { use_git: false, soft_work_categories: ['需求评审', '写 PRD', '用户访谈', '走查', '验收'] },
   },
-  _hint: 'role: 空 → 弹角色选择;auto_copy: null → 弹"是否启用剪贴板";day_end_min: 黑心下班下限默认 20:30;git_user_email: 顶层共享;repositories: 用 save-repo 管理;role_definitions: 5 角色元数据',
+  _hint: 'role: 空 → 弹角色选择;auto_copy: null → 弹"是否启用剪贴板";day_start_max: 黑心上班上限默认 09:30;day_end_min: 黑心下班下限默认 20:30;git_user_email: 顶层共享;repositories: 用 save-repo 管理;role_definitions: 5 角色元数据',
 };
 
 // ─── Utility ─────────────────────────────────────────────────────────────
@@ -136,6 +137,17 @@ function cmdInit(args) {
     setting = readSetting();
   }
 
+  // Write back day_start_max if provided (HH:MM)
+  if (args.dayStart) {
+    if (!/^\d{1,2}:\d{2}$/.test(args.dayStart)) {
+      console.error('❌ --day-start 格式必须为 HH:MM，如 09:30');
+      process.exit(1);
+    }
+    setting.day_start_max = args.dayStart;
+    writeSetting(setting);
+    setting = readSetting();
+  }
+
   // Write back day_end_min if provided (HH:MM)
   if (args.dayEnd) {
     if (!/^\d{1,2}:\d{2}$/.test(args.dayEnd)) {
@@ -147,11 +159,17 @@ function cmdInit(args) {
     setting = readSetting();
   }
 
-  // Migrate: 旧 setting 无 day_end_min → 补默认 20:30
+  // Migrate: 旧 setting 缺字段 → 补默认
+  let migrated = false;
+  if (!setting.day_start_max) {
+    setting.day_start_max = DEFAULT_SETTING.day_start_max;
+    migrated = true;
+  }
   if (!setting.day_end_min) {
     setting.day_end_min = DEFAULT_SETTING.day_end_min;
-    writeSetting(setting);
+    migrated = true;
   }
+  if (migrated) writeSetting(setting);
 
   // Detect node availability (always true since we're running in node)
   setting.node_available = true;
@@ -169,6 +187,7 @@ function cmdInit(args) {
     auto_copy: setting.auto_copy,
     node_available: setting.node_available,
     git_user_email: setting.git_user_email,
+    day_start_max: setting.day_start_max || DEFAULT_SETTING.day_start_max,
     day_end_min: setting.day_end_min || DEFAULT_SETTING.day_end_min,
     repositories: setting.repositories,
     categories,
@@ -296,9 +315,12 @@ function cmdGather(args) {
     // 0 commit → 静默跳过, 不输出 entry (避免模型困惑"这个仓库要不要用")
     if (commits.length === 0) continue;
 
-    // 4) Hours: commit 时间差；终点下限 = --day-end > setting.day_end_min > 20:30
+    // 4) Hours: 黑心窗 只能多不能少
+    //    起点上限 = --day-start > setting.day_start_max > 09:30
+    //    终点下限 = --day-end   > setting.day_end_min   > 20:30
+    const dayStartMax = args.dayStart || setting?.day_start_max || DEFAULT_SETTING.day_start_max;
     const dayEndMin = args.dayEnd || setting?.day_end_min || DEFAULT_SETTING.day_end_min;
-    const repoHours = computeSessionHours(commits, date, dayEndMin);
+    const repoHours = computeSessionHours(commits, date, dayStartMax, dayEndMin);
     const items = commits.map(c => ({
       commit: c.subject,
       time: c.time,
@@ -433,27 +455,28 @@ function collectCommits(repoPath, date, author) {
 }
 
 // ─── compute-session-hours ──────────────────────────────────────────────
-// Compute real working hours from commit timestamps.
+// 黑心老板版：默认窗 09:30–20:30；只能多不能少（除非用户显式改窗）。
 // Rules:
 //   - 0 commit: 0
-//   - 1 commit: 默认 1.5h (1-2h 中位，单 commit 无法测时长)
-//   - 2+ commits: start = max(first, 09:00), end = max(last, dayEndMin), cap [0.5, 14]
-// dayEndMin: HH:MM，默认 20:30（setting.day_end_min / --day-end）
-function computeSessionHours(commits, date, dayEndMinStr = '20:30') {
+//   - 1+ commits:
+//       start = min(最早 commit, dayStartMax)  → 最晚按 dayStartMax 开工（可更早）
+//       end   = max(最晚 commit, dayEndMin)    → 最早按 dayEndMin 下班（可更晚）
+//       cap [0.5, 14]，半小时粒度
+// dayStartMax / dayEndMin: HH:MM；默认 09:30 / 20:30
+function computeSessionHours(commits, date, dayStartMaxStr = '09:30', dayEndMinStr = '20:30') {
   if (commits.length === 0) return 0;
-
-  // 单 commit：无法测真实时长，按 1.5h 中位估
-  if (commits.length === 1) return 1.5;
 
   const sorted = [...commits].sort((a, b) => a.time - b.time);
   const first = sorted[0].time;
   const last = sorted[sorted.length - 1].time;
 
+  const startHHMM = /^\d{1,2}:\d{2}$/.test(dayStartMaxStr) ? dayStartMaxStr : '09:30';
   const endHHMM = /^\d{1,2}:\d{2}$/.test(dayEndMinStr) ? dayEndMinStr : '20:30';
-  const dayStart = new Date(`${date}T09:00:00`);
+  const dayStartMax = new Date(`${date}T${startHHMM}:00`);
   const dayEndMin = new Date(`${date}T${endHHMM}:00`);
 
-  const startSec = Math.max(first, Math.floor(dayStart.getTime() / 1000));
+  // 只能多不能少：起点取更早，终点取更晚
+  const startSec = Math.min(first, Math.floor(dayStartMax.getTime() / 1000));
   const endSec = Math.max(last, Math.floor(dayEndMin.getTime() / 1000));
 
   const hours = (endSec - startSec) / 3600;
@@ -461,46 +484,38 @@ function computeSessionHours(commits, date, dayEndMinStr = '20:30') {
   return Math.min(Math.max(halfHour, 0.5), 14);
 }
 
+// ─── clipboard via npx clipboard-cli ────────────────────────────────────
+// Cross-platform: echo TEXT | npx --yes clipboard-cli
+function copyToClipboard(text) {
+  const npxBin = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+  const result = spawnSync(npxBin, ['--yes', 'clipboard-cli'], {
+    input: text,
+    encoding: 'utf8',
+    shell: process.platform === 'win32',
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  if (result.error) {
+    return { ok: false, detail: result.error.message };
+  }
+  if (result.status !== 0) {
+    const detail = (result.stderr || result.stdout || `exit ${result.status}`).trim();
+    return { ok: false, detail };
+  }
+  return { ok: true };
+}
+
 // ─── clipboard subcommand ───────────────────────────────────────────────
 function cmdClipboard() {
   const input = fs.readFileSync(0, 'utf8'); // stdin
-  const platform = process.platform;
-
-  let cmd, cmdArgs;
-  if (platform === 'darwin') {
-    cmd = 'pbcopy'; cmdArgs = [];
-  } else if (platform === 'win32') {
-    cmd = 'clip'; cmdArgs = [];
-  } else {
-    // cspell:disable-next-line
-    cmd = 'xclip'; cmdArgs = ['-selection', 'clipboard'];
+  const { ok, detail } = copyToClipboard(input);
+  if (ok) {
+    console.log('✅ 已自动复制到剪贴板（npx clipboard-cli）');
+    process.exit(0);
   }
-
-  const child = spawn(cmd, cmdArgs, { stdio: ['pipe', 'ignore', 'pipe'] });
-  let stderr = '';
-  child.stderr.on('data', d => { stderr += d.toString(); });
-
-  child.on('error', err => {
-    console.error(`❌ 剪贴板命令不可用：${cmd}（${err.message}）`);
-    // cspell:disable-next-line
-    console.error('   macOS 自带 pbcopy；Windows 自带 clip；Linux 需装 xclip（apt install xclip）');
-    console.error('   日报内容已输出到 stdout，请手动 Cmd+A / Ctrl+A 复制');
-    process.exit(1);
-  });
-
-  child.on('exit', code => {
-    if (code === 0) {
-      console.log('✅ 已自动复制到剪贴板');
-      process.exit(0);
-    } else {
-      console.error(`❌ 剪贴板复制失败（exit ${code}）：${stderr.trim()}`);
-      console.error('   日报内容已输出到 stdout，请手动复制');
-      process.exit(1);
-    }
-  });
-
-  child.stdin.write(input);
-  child.stdin.end();
+  console.error(`❌ 剪贴板复制失败：${detail || 'unknown'}`);
+  console.error('   需要 Node.js + 网络（首次 npx 拉 clipboard-cli）');
+  console.error('   日报内容已输出到 stdout，请手动 Cmd+A / Ctrl+A 复制');
+  process.exit(1);
 }
 
 // ─── emit subcommand ────────────────────────────────────────────────────
@@ -522,20 +537,53 @@ function saveHistory(date, daily, sheetLine) {
   return filePath;
 }
 
+function validateDailyLines(daily) {
+  // 每条必须：N. 【项目】…。- X小时（X 为整数或 .5）
+  const lineRe = /^\d+\.\s+【[^】]+】.+[。.]-\s*\d+(\.5)?小时\s*$/;
+  const lines = daily.trim().split(/\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length === 0) {
+    console.error('❌ --daily 为空');
+    process.exit(1);
+  }
+  for (const line of lines) {
+    if (!lineRe.test(line)) {
+      console.error(`❌ 分点格式非法（须含【项目名】与 - X小时）：${line}`);
+      console.error('   例：1. 【车辆调度】修复列表接口字段适配。- 2小时');
+      process.exit(1);
+    }
+  }
+  return lines;
+}
+
 function cmdEmit(args) {
   const daily = args.daily || '';
   const sheetTime = (args.sheetTime || '').trim();
-  if (!daily.trim()) {
+  if (!daily.trim() || !sheetTime) {
     console.error('usage: daily-report.js emit --daily "<分点>" --sheet-time "<单行概括>" [--date YYYY-MM-DD] [--no-clipboard]');
+    process.exit(1);
+  }
+
+  validateDailyLines(daily);
+
+  // sheetTime 正文（去前缀）不得空、不得含换行/【】/小时
+  const sheetBody = sheetTime.replace(/^sheetTime:\s*/i, '').trim();
+  if (!sheetBody) {
+    console.error('❌ --sheet-time 不能为空');
+    process.exit(1);
+  }
+  if (/[\n\r]/.test(sheetBody) || /【/.test(sheetBody) || /小时/.test(sheetBody)) {
+    console.error('❌ sheetTime 须单行、无【项目名】、无小时数');
+    process.exit(1);
+  }
+  if ([...sheetBody].length > 80) {
+    console.error('❌ sheetTime 超过 80 字，请截断后再 emit');
     process.exit(1);
   }
 
   const date = args.date || new Date().toISOString().slice(0, 10);
 
-  // 1) sheetTime 打印到 stdout（前缀由 emit 加）
-  const sheetLine = sheetTime.startsWith('sheetTime:')
-    ? sheetTime
-    : `sheetTime: ${sheetTime}`;
+  // 1) sheetTime + 分点 一并打印到 stdout（聊天必须原样展示这段）
+  const sheetLine = `sheetTime: ${sheetBody}`;
   console.log(sheetLine);
   console.log('');
   console.log(daily.trimEnd());
@@ -548,35 +596,21 @@ function cmdEmit(args) {
     console.error(`⚠️ 归档失败（不阻断）: ${e.message}`);
   }
 
-  // 3) 剪贴板：仅分点；失败不阻断
+  // 3) 剪贴板：仅分点；via npx clipboard-cli；失败不阻断
   const setting = readSetting();
   const skipClip = args.noClipboard || setting?.auto_copy !== true;
   if (skipClip) return;
 
-  const platform = process.platform;
-  let cmd, cmdArgs;
-  if (platform === 'darwin') {
-    cmd = 'pbcopy'; cmdArgs = [];
-  } else if (platform === 'win32') {
-    cmd = 'clip'; cmdArgs = [];
-  } else {
-    // cspell:disable-next-line
-    cmd = 'xclip'; cmdArgs = ['-selection', 'clipboard'];
-  }
-
   try {
-    const child = spawn(cmd, cmdArgs, { stdio: ['pipe', 'ignore', 'pipe'] });
-    child.on('error', () => {
-      console.error('⚠️ 剪贴板不可用，日报已打印到 stdout，请手动复制');
-    });
-    child.on('exit', code => {
-      if (code === 0) console.error('✅ 已自动复制到剪贴板（仅分点）');
-      else console.error('⚠️ 剪贴板复制失败，日报已打印到 stdout，请手动复制');
-    });
-    child.stdin.write(daily);
-    child.stdin.end();
-  } catch {
-    console.error('⚠️ 剪贴板失败，日报已打印到 stdout，请手动复制');
+    const { ok, detail } = copyToClipboard(daily);
+    if (ok) console.error('✅ 已自动复制到剪贴板（仅分点，npx clipboard-cli）');
+    else {
+      console.error(`⚠️ 剪贴板失败：${detail || 'unknown'}`);
+      console.error('   日报已打印到 stdout，请手动复制');
+    }
+  } catch (e) {
+    console.error(`⚠️ 剪贴板失败：${e.message}`);
+    console.error('   日报已打印到 stdout，请手动复制');
   }
 }
 
@@ -778,6 +812,7 @@ function parseArgs(rawArgs) {
       case '--repos':     args.repos = rawArgs[++i]; break;
       case '--date':      args.date = rawArgs[++i]; break;
       case '--author':    args.author = rawArgs[++i]; break;
+      case '--day-start': args.dayStart = rawArgs[++i]; break;
       case '--day-end':   args.dayEnd = rawArgs[++i]; break;
       case '--daily':     args.daily = rawArgs[++i]; break;
       case '--sheet-time': args.sheetTime = rawArgs[++i]; break;
