@@ -97,15 +97,24 @@ async function fetchModels(apiRoot, apiKey, { timeoutMs = 30000 } = {}) {
   }
 }
 
+/** ms → seconds, 2 decimal places (Claude Code cares about TTFT in seconds). */
+function msToSec(ms) {
+  if (ms == null || Number.isNaN(ms)) return null;
+  return Math.round(Number(ms) / 10) / 100;
+}
+
 /**
- * Stream chat completion; measure ms until first non-empty delta.content.
- * Aborts shortly after first token to save tokens/time.
+ * Stream chat to completion. Capture:
+ * - TTFT: first non-empty delta.content
+ * - total: request start → stream end / [DONE]
+ * Does NOT use wall-clock "end time" for ranking (useless across models).
  */
-async function measureFirstToken(apiRoot, apiKey, model, prompt, { timeoutMs = 60000 } = {}) {
+async function measureStream(apiRoot, apiKey, model, prompt, { timeoutMs = 120000 } = {}) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   const started = performance.now();
   let firstTokenMs = null;
+  let sawDone = false;
   let error = null;
   let bytes = 0;
 
@@ -154,7 +163,11 @@ async function measureFirstToken(apiRoot, apiKey, model, prompt, { timeoutMs = 6
         const trimmed = line.trim();
         if (!trimmed.startsWith('data:')) continue;
         const data = trimmed.slice(5).trim();
-        if (!data || data === '[DONE]') continue;
+        if (!data) continue;
+        if (data === '[DONE]') {
+          sawDone = true;
+          continue;
+        }
         let json;
         try {
           json = JSON.parse(data);
@@ -165,24 +178,18 @@ async function measureFirstToken(apiRoot, apiKey, model, prompt, { timeoutMs = 6
         const content = delta?.content;
         if (typeof content === 'string' && content.length > 0 && firstTokenMs == null) {
           firstTokenMs = Math.round(performance.now() - started);
-          try {
-            await reader.cancel();
-          } catch {
-            /* ignore */
-          }
-          ctrl.abort();
-          break;
         }
+        const finish = json.choices?.[0]?.finish_reason;
+        if (finish) sawDone = true;
       }
-      if (firstTokenMs != null) break;
     }
 
     if (firstTokenMs == null) {
       error = 'stream ended without content token';
     }
   } catch (e) {
-    if (e && e.name === 'AbortError' && firstTokenMs != null) {
-      /* expected after first token */
+    if (e && e.name === 'AbortError') {
+      error = `timeout (${timeoutMs}ms)`;
     } else {
       error = e && e.message ? e.message : String(e);
     }
@@ -190,23 +197,34 @@ async function measureFirstToken(apiRoot, apiKey, model, prompt, { timeoutMs = 6
     clearTimeout(t);
   }
 
+  const totalMs = Math.round(performance.now() - started);
+  const ok = firstTokenMs != null && !error;
   return {
     model,
     firstTokenMs,
-    totalMs: Math.round(performance.now() - started),
-    ok: firstTokenMs != null && !error,
-    error,
+    firstTokenSec: msToSec(firstTokenMs),
+    totalMs: ok ? totalMs : null,
+    totalSec: ok ? msToSec(totalMs) : null,
+    finishedAt: new Date().toISOString(),
+    sawDone,
+    ok,
+    error: ok ? null : (error || 'unknown'),
     bytes,
   };
 }
 
+/** @deprecated alias */
+const measureFirstToken = measureStream;
+
 /**
  * Bench multiple models. onProgress({ type, ... }) optional.
+ * sortBy: 'ttft' (default, Claude Code) | 'total'
  */
 async function benchModels(apiRoot, apiKey, models, {
   prompt = '你好',
   rounds = 1,
-  timeoutMs = 60000,
+  timeoutMs = 120000,
+  sortBy = 'ttft',
   onProgress,
 } = {}) {
   const results = [];
@@ -217,23 +235,30 @@ async function benchModels(apiRoot, apiKey, models, {
     const samples = [];
     for (let r = 0; r < rounds; r++) {
       if (onProgress) onProgress({ type: 'round_start', model, round: r + 1, rounds });
-      const sample = await measureFirstToken(apiRoot, apiKey, model, prompt, { timeoutMs });
+      const sample = await measureStream(apiRoot, apiKey, model, prompt, { timeoutMs });
       samples.push(sample);
       if (onProgress) onProgress({ type: 'round_done', model, round: r + 1, sample });
     }
     const okSamples = samples.filter((s) => s.ok && typeof s.firstTokenMs === 'number');
     const firsts = okSamples.map((s) => s.firstTokenMs);
-    const avg = firsts.length
+    const totals = okSamples.map((s) => s.totalMs).filter((n) => typeof n === 'number');
+    const avgTtftMs = firsts.length
       ? Math.round(firsts.reduce((a, b) => a + b, 0) / firsts.length)
       : null;
-    const best = firsts.length ? Math.min(...firsts) : null;
+    const avgTotalMs = totals.length
+      ? Math.round(totals.reduce((a, b) => a + b, 0) / totals.length)
+      : null;
     const entry = {
       model,
       ok: firsts.length > 0,
       rounds: samples.length,
       okRounds: firsts.length,
-      firstTokenMsAvg: avg,
-      firstTokenMsBest: best,
+      // Primary (Claude Code): avg TTFT seconds
+      ttftSec: msToSec(avgTtftMs),
+      // Secondary: avg full-stream seconds
+      totalSec: msToSec(avgTotalMs),
+      firstTokenMsAvg: avgTtftMs,
+      totalMsAvg: avgTotalMs,
       samples,
       error: firsts.length ? null : (samples.map((s) => s.error).filter(Boolean)[0] || 'all rounds failed'),
     };
@@ -241,23 +266,36 @@ async function benchModels(apiRoot, apiKey, models, {
     if (onProgress) onProgress({ type: 'model_done', result: entry });
   }
 
+  const keyMs = sortBy === 'total' ? 'totalMsAvg' : 'firstTokenMsAvg';
   const ranked = [...results]
-    .filter((r) => r.ok)
-    .sort((a, b) => a.firstTokenMsAvg - b.firstTokenMsAvg);
+    .filter((r) => r.ok && r[keyMs] != null)
+    .sort((a, b) => a[keyMs] - b[keyMs]);
   const failed = results.filter((r) => !r.ok);
 
-  return { results, ranked, failed, prompt, rounds, at: new Date().toISOString() };
+  return {
+    results,
+    ranked,
+    failed,
+    prompt,
+    rounds,
+    at: new Date().toISOString(),
+    sortBy: sortBy === 'total' ? 'totalSec' : 'ttftSec',
+    metric: sortBy === 'total' ? 'totalSec' : 'ttftSec',
+  };
 }
 
 function formatRankTable(bench) {
   const lines = [];
-  lines.push(`# Model bench (stream first-token) @ ${bench.at}`);
-  lines.push(`prompt: ${JSON.stringify(bench.prompt)}  rounds: ${bench.rounds}`);
+  const sortLabel = bench.sortBy === 'totalSec' ? 'totalSec' : 'ttftSec';
+  lines.push(`# Model bench · TTFT + total (seconds) @ ${bench.at}`);
+  lines.push(`sort: ${sortLabel}  prompt: ${JSON.stringify(bench.prompt)}  rounds: ${bench.rounds}`);
   lines.push('');
-  lines.push('| Rank | Model | Avg first-token (ms) | Best (ms) | OK rounds |');
+  lines.push('| Rank | Model | TTFT (s) | Total (s) | OK |');
   lines.push('| ---: | --- | ---: | ---: | ---: |');
   bench.ranked.forEach((r, i) => {
-    lines.push(`| ${i + 1} | ${r.model} | ${r.firstTokenMsAvg} | ${r.firstTokenMsBest} | ${r.okRounds}/${r.rounds} |`);
+    const ttft = r.ttftSec != null ? r.ttftSec.toFixed(2) : '-';
+    const total = r.totalSec != null ? r.totalSec.toFixed(2) : '-';
+    lines.push(`| ${i + 1} | ${r.model} | ${ttft} | ${total} | ${r.okRounds}/${r.rounds} |`);
   });
   if (bench.failed.length) {
     lines.push('');
@@ -267,8 +305,12 @@ function formatRankTable(bench) {
     }
   }
   if (bench.ranked.length) {
+    const top = bench.ranked[0];
+    const why = sortLabel === 'totalSec'
+      ? `lowest total ${top.totalSec.toFixed(2)}s`
+      : `lowest TTFT ${top.ttftSec.toFixed(2)}s`;
     lines.push('');
-    lines.push(`**Recommendation:** prefer \`${bench.ranked[0].model}\` now (lowest avg first-token).`);
+    lines.push(`**Recommendation:** prefer \`${top.model}\` now (${why}).`);
   }
   return lines.join('\n');
 }
@@ -280,12 +322,13 @@ function saveHistory(bench) {
   const file = path.join(dir, `${stamp}.json`);
   const slim = {
     at: bench.at,
+    sortBy: bench.sortBy,
     prompt: bench.prompt,
     rounds: bench.rounds,
     ranked: bench.ranked.map((r) => ({
       model: r.model,
-      firstTokenMsAvg: r.firstTokenMsAvg,
-      firstTokenMsBest: r.firstTokenMsBest,
+      ttftSec: r.ttftSec,
+      totalSec: r.totalSec,
       okRounds: r.okRounds,
       rounds: r.rounds,
     })),
@@ -301,9 +344,11 @@ module.exports = {
   readEnv,
   normalizeApiRoot,
   fetchModels,
+  measureStream,
   measureFirstToken,
   benchModels,
   formatRankTable,
   saveHistory,
   configDir,
+  msToSec,
 };

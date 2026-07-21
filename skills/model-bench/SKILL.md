@@ -56,12 +56,13 @@ model-bench Progress:
 | `--port N` | 8787 | UI 端口 |
 | `--rounds N` | 1 | 每模型轮数（UI 也可设，最大 5） |
 | `--prompt TEXT` | 你好 | 探测用 user 消息 |
+| `--sort ttft\|total` | ttft | 排行键；Claude Code 用 ttft |
 | `--models a,b` | 全部 | 只测这些 id |
 | `--exclude a,b` | — | 排除 |
 | `--json` | off | CLI 输出 JSON |
 | `--no-save` | off | 不写 history |
 
-**argument-hint**: `[ui] [--port N] [--rounds N] [--prompt TEXT] [--models a,b] [--exclude a,b] [--json] [--no-save]`
+**argument-hint**: `[ui] [--port N] [--rounds N] [--prompt TEXT] [--sort ttft|total] [--models a,b] [--exclude a,b] [--json] [--no-save]`
 
 ## Step 0: 模式
 
@@ -107,11 +108,11 @@ node scripts/bench.js ui
 ## Step 3: 交付
 
 必须包含：
-1. 按 **Avg first-token (ms)** 升序的排行表（或确认 UI 已展示）
-2. 一句推荐：`现在优先用 <model>`
+1. 排行表含 **TTFT (s)** 与 **Total (s)**；默认按 TTFT 升序（可用 `--sort total` / UI 切换）
+2. 一句推荐：`现在优先用 <model>（TTFT|Total x.xxs）`
 3. 失败模型及原因（若有）
 
-勿粘贴 Authorization 头或完整 key。
+勿粘贴 Authorization 头或完整 key。不展示墙钟「结束时刻」作排序依据。
 
 ## Anti-Patterns
 
@@ -123,7 +124,7 @@ node scripts/bench.js ui
 ## Pre-Delivery Checklist
 
 - [ ] 未在任何文件/回复中写入真实 API key
-- [ ] 测的是 **stream 首包**（`delta.content` 首次非空）
+- [ ] 测的是 **stream 首包 TTFT（秒）**（`delta.content` 首次非空）
 - [ ] 模型列表来自 `/v1/models`（或用户显式 `--models`）
-- [ ] 有排行 + 当前推荐
+- [ ] 有排行（TTFT s）+ 当前推荐
 - [ ] UI 模式已给出本地 URL

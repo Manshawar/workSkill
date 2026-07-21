@@ -118,7 +118,8 @@ function createServer() {
         }
         const rounds = Math.max(1, Math.min(5, parseInt(body.rounds, 10) || 1));
         const prompt = typeof body.prompt === 'string' && body.prompt.trim() ? body.prompt.trim() : '你好';
-        const timeoutMs = Math.max(5000, parseInt(body.timeoutMs, 10) || 60000);
+        const timeoutMs = Math.max(5000, parseInt(body.timeoutMs, 10) || 120000);
+        const sortBy = body.sortBy === 'total' ? 'total' : 'ttft';
 
         // SSE progress
         res.writeHead(200, {
@@ -130,11 +131,12 @@ function createServer() {
           res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
         };
 
-        send('start', { count: models.length, rounds, prompt });
+        send('start', { count: models.length, rounds, prompt, sortBy });
         const bench = await benchModels(gw.apiRoot, gw.apiKey, models, {
           prompt,
           rounds,
           timeoutMs,
+          sortBy,
           onProgress: (ev) => send('progress', ev),
         });
         let historyFile = null;
@@ -149,6 +151,7 @@ function createServer() {
           at: bench.at,
           prompt: bench.prompt,
           rounds: bench.rounds,
+          sortBy: bench.sortBy,
           historyFile,
         });
         res.end();

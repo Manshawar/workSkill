@@ -52,6 +52,13 @@
       align-items: center;
     }
     label { color: var(--muted); font-size: 13px; }
+    select {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font: inherit;
+      background: #fff;
+    }
     input[type="text"], input[type="number"] {
       border: 1px solid var(--line);
       border-radius: 6px;
@@ -143,7 +150,7 @@
 <body>
   <main>
     <h1>model-bench</h1>
-    <p class="sub">OpenAI 兼容网关 · 流式首包耗时排行 · 密钥只走本机环境变量</p>
+    <p class="sub">展示 TTFT（首包）+ Total（整段流式）；默认按 TTFT 排序（Claude Code）。不展示墙钟结束时间。</p>
 
     <section class="panel" id="health-panel">
       <div class="row">
@@ -165,6 +172,12 @@
     <section class="panel">
       <div class="row">
         <label>rounds <input type="number" id="rounds" min="1" max="5" value="1" /></label>
+        <label>sort
+          <select id="sortBy">
+            <option value="ttft" selected>TTFT（推荐）</option>
+            <option value="total">Total 总耗时</option>
+          </select>
+        </label>
         <label class="row" style="flex:1">prompt
           <input class="grow" type="text" id="prompt" value="你好" />
         </label>
@@ -190,8 +203,8 @@
           <tr>
             <th class="num">#</th>
             <th>Model</th>
-            <th class="num">Avg first-token (ms)</th>
-            <th class="num">Best (ms)</th>
+            <th class="num">TTFT (s)</th>
+            <th class="num">Total (s)</th>
             <th class="num">OK</th>
           </tr>
         </thead>
@@ -292,15 +305,22 @@
         ranked.forEach((r, i) => {
           const tr = document.createElement('tr');
           if (i === 0) tr.className = 'top';
+          const ttft = r.ttftSec != null ? Number(r.ttftSec).toFixed(2) : '-';
+          const total = r.totalSec != null ? Number(r.totalSec).toFixed(2) : '-';
           tr.innerHTML =
             '<td class="num">' + (i + 1) + '</td>' +
             '<td>' + escapeHtml(r.model) + (i === 0 ? '<span class="pill">recommended</span>' : '') + '</td>' +
-            '<td class="num">' + r.firstTokenMsAvg + '</td>' +
-            '<td class="num">' + r.firstTokenMsBest + '</td>' +
+            '<td class="num">' + ttft + '</td>' +
+            '<td class="num">' + total + '</td>' +
             '<td class="num">' + r.okRounds + '/' + r.rounds + '</td>';
           body.appendChild(tr);
         });
-        $('rec').innerHTML = '现在优先用 <code>' + escapeHtml(ranked[0].model) + '</code>';
+        const top = ranked[0];
+        const byTotal = (done.sortBy === 'totalSec');
+        const tip = byTotal
+          ? ('Total ' + Number(top.totalSec).toFixed(2) + 's')
+          : ('TTFT ' + Number(top.ttftSec).toFixed(2) + 's');
+        $('rec').innerHTML = '现在优先用 <code>' + escapeHtml(top.model) + '</code>（' + tip + '）';
       }
       const failed = done.failed || [];
       if (failed.length) {
@@ -336,6 +356,7 @@
         models,
         rounds: Number($('rounds').value) || 1,
         prompt: $('prompt').value || '你好',
+        sortBy: $('sortBy').value === 'total' ? 'total' : 'ttft',
       };
 
       try {
@@ -376,7 +397,7 @@
             if (event === 'progress' && data.type === 'model_done') {
               const r = data.result;
               $('run-status').textContent = r.ok
-                ? (r.model + ' ok avg=' + r.firstTokenMsAvg + 'ms')
+                ? (r.model + ' TTFT=' + Number(r.ttftSec).toFixed(2) + 's total=' + Number(r.totalSec).toFixed(2) + 's')
                 : (r.model + ' FAIL');
             }
             if (event === 'done') final = data;

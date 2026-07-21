@@ -42,7 +42,8 @@ function parseArgs(argv) {
     models: null,
     exclude: [],
     port: 8787,
-    timeoutMs: 60000,
+    timeoutMs: 120000,
+    sortBy: 'ttft',
   };
   const args = argv.slice(2);
   for (let i = 0; i < args.length; i++) {
@@ -56,6 +57,10 @@ function parseArgs(argv) {
     else if (a === '--exclude') out.exclude = (args[++i] || '').split(',').map((s) => s.trim()).filter(Boolean);
     else if (a === '--port') out.port = parseInt(args[++i], 10) || out.port;
     else if (a === '--timeout') out.timeoutMs = parseInt(args[++i], 10) || out.timeoutMs;
+    else if (a === '--sort') {
+      const v = (args[++i] || 'ttft').toLowerCase();
+      out.sortBy = v === 'total' ? 'total' : 'ttft';
+    }
     else if (a === '-h' || a === '--help') out.help = true;
   }
   return out;
@@ -63,7 +68,7 @@ function parseArgs(argv) {
 
 function usage() {
   console.log(`Usage:
-  node bench.js                 # CLI: list models → stream first-token → rank
+  node bench.js                 # CLI: TTFT + total → rank (default sort: TTFT)
   node bench.js ui              # local UI (same as --ui)
   node bench.js --ui [--port 8787]
 
@@ -72,7 +77,8 @@ Options:
   --prompt TEXT       default 你好
   --models a,b,c      only these ids
   --exclude a,b       skip these ids
-  --timeout MS        per-request timeout (default 60000)
+  --sort ttft|total   default ttft (Claude Code); total = full stream
+  --timeout MS        per-request timeout (default 120000)
   --json              print JSON instead of markdown table
   --no-save           do not write ~/.config/model-bench/history/
   --port N            UI port (default 8787)
@@ -110,12 +116,16 @@ async function runCli(opts) {
     prompt: opts.prompt,
     rounds: opts.rounds,
     timeoutMs: opts.timeoutMs,
+    sortBy: opts.sortBy,
     onProgress: (ev) => {
       if (ev.type === 'model_start') process.stderr.write(`  → ${ev.model}\n`);
       if (ev.type === 'model_done') {
         const r = ev.result;
-        if (r.ok) process.stderr.write(`    ok avg=${r.firstTokenMsAvg}ms best=${r.firstTokenMsBest}ms\n`);
-        else process.stderr.write(`    FAIL ${r.error}\n`);
+        if (r.ok) {
+          process.stderr.write(
+            `    ok TTFT=${r.ttftSec.toFixed(2)}s total=${r.totalSec.toFixed(2)}s\n`,
+          );
+        } else process.stderr.write(`    FAIL ${r.error}\n`);
       }
     },
   });
