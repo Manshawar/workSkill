@@ -119,7 +119,7 @@ function createServer() {
         const rounds = Math.max(1, Math.min(5, parseInt(body.rounds, 10) || 1));
         const prompt = typeof body.prompt === 'string' && body.prompt.trim() ? body.prompt.trim() : '你好';
         const timeoutMs = Math.max(5000, parseInt(body.timeoutMs, 10) || 120000);
-        const sortBy = body.sortBy === 'total' ? 'total' : 'ttft';
+        const sortBy = body.sortBy === 'ttft' ? 'ttft' : 'total';
         const staggerMs = Math.max(0, parseInt(body.staggerMs, 10) || 1000);
         let concurrency = 6;
         if (body.concurrency === 'all' || body.concurrency === 0) {

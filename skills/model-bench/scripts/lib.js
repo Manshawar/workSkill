@@ -270,8 +270,8 @@ const measureFirstToken = measureStream;
 
 /**
  * Bench multiple models concurrently (staggered starts).
- * sortBy: 'ttft' (default, Claude Code) | 'total'
- * concurrency: max in-flight models (default = all)
+ * sortBy: 'total' (default — agent waits for full turn) | 'ttft'
+ * concurrency: max in-flight models (default 6)
  * staggerMs: delay between each model start (default 1000)
  * Rounds within one model stay sequential.
  */
@@ -279,7 +279,7 @@ async function benchModels(apiRoot, apiKey, models, {
   prompt = '你好',
   rounds = 1,
   timeoutMs = 120000,
-  sortBy = 'ttft',
+  sortBy = 'total',
   concurrency = 6,
   staggerMs = 1000,
   onProgress,
@@ -326,7 +326,7 @@ async function benchModels(apiRoot, apiKey, models, {
     (model) => benchOne(model),
   );
 
-  const keyMs = sortBy === 'total' ? 'totalMsAvg' : 'firstTokenMsAvg';
+  const keyMs = sortBy === 'ttft' ? 'firstTokenMsAvg' : 'totalMsAvg';
   const ranked = [...results]
     .filter((r) => r.ok && r[keyMs] != null)
     .sort((a, b) => a[keyMs] - b[keyMs]);
@@ -341,8 +341,8 @@ async function benchModels(apiRoot, apiKey, models, {
     concurrency: Number.isFinite(concurrency) ? concurrency : list.length,
     staggerMs,
     at: new Date().toISOString(),
-    sortBy: sortBy === 'total' ? 'totalSec' : 'ttftSec',
-    metric: sortBy === 'total' ? 'totalSec' : 'ttftSec',
+    sortBy: sortBy === 'ttft' ? 'ttftSec' : 'totalSec',
+    metric: sortBy === 'ttft' ? 'ttftSec' : 'totalSec',
   };
 }
 
@@ -368,9 +368,9 @@ function formatRankTable(bench) {
   }
   if (bench.ranked.length) {
     const top = bench.ranked[0];
-    const why = sortLabel === 'totalSec'
-      ? `lowest total ${top.totalSec.toFixed(2)}s`
-      : `lowest TTFT ${top.ttftSec.toFixed(2)}s`;
+    const why = sortLabel === 'ttftSec'
+      ? `lowest TTFT ${top.ttftSec.toFixed(2)}s`
+      : `lowest total ${top.totalSec.toFixed(2)}s`;
     lines.push('');
     lines.push(`**Recommendation:** prefer \`${top.model}\` now (${why}).`);
   }

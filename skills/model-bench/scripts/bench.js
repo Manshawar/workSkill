@@ -43,7 +43,7 @@ function parseArgs(argv) {
     exclude: [],
     port: 8787,
     timeoutMs: 120000,
-    sortBy: 'ttft',
+    sortBy: 'total',
     concurrency: 6,
     staggerMs: 1000,
   };
@@ -68,8 +68,8 @@ function parseArgs(argv) {
       out.staggerMs = Number.isFinite(n) && n >= 0 ? n : 1000;
     }
     else if (a === '--sort') {
-      const v = (args[++i] || 'ttft').toLowerCase();
-      out.sortBy = v === 'total' ? 'total' : 'ttft';
+      const v = (args[++i] || 'total').toLowerCase();
+      out.sortBy = v === 'ttft' ? 'ttft' : 'total';
     }
     else if (a === '-h' || a === '--help') out.help = true;
   }
@@ -87,7 +87,7 @@ Options:
   --prompt TEXT         default 你好
   --models a,b,c        only these ids
   --exclude a,b         skip these ids
-  --sort ttft|total     default ttft (Claude Code); total = full stream
+  --sort ttft|total     default total (wait-for-full-turn agents); ttft = first token
   --concurrency N / -c  max in-flight models (default: 6)
   --stagger MS          delay between each model start (default 1000)
   --timeout MS          per-request timeout (default 120000)

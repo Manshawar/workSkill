@@ -56,7 +56,7 @@ model-bench Progress:
 | `--port N` | 8787 | UI 端口 |
 | `--rounds N` | 1 | 每模型轮数（UI 也可设，最大 5） |
 | `--prompt TEXT` | 你好 | 探测用 user 消息 |
-| `--sort ttft\|total` | ttft | 排行键；Claude Code 用 ttft |
+| `--sort ttft\|total` | total | 默认 total（等整轮结束再下一步）；ttft 看首包体感 |
 | `--concurrency N` / `-c` | 6 | 最大同时测几个模型（防打爆主力） |
 | `--stagger MS` | 1000 | 每个模型启动间隔；限流主要靠 concurrency |
 | `--models a,b` | 全部 | 只测这些 id |
@@ -110,8 +110,8 @@ node scripts/bench.js ui
 ## Step 3: 交付
 
 必须包含：
-1. 排行表含 **TTFT (s)** 与 **Total (s)**；默认按 TTFT 升序（可用 `--sort total` / UI 切换）
-2. 一句推荐：`现在优先用 <model>（TTFT|Total x.xxs）`
+1. 排行表含 **TTFT (s)** 与 **Total (s)**；默认按 **Total** 升序（`--sort ttft` 可改）
+2. 一句推荐：`现在优先用 <model>（Total|TTFT x.xxs）`
 3. 失败模型及原因（若有）
 
 勿粘贴 Authorization 头或完整 key。不展示墙钟「结束时刻」作排序依据。
