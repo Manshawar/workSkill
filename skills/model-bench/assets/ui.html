@@ -167,7 +167,7 @@
 <body>
   <main>
     <h1>model-bench</h1>
-    <p class="sub">默认按 Total 排序（整轮结束再下一步）。UI 可开定时探测 + 折线看稳定性。</p>
+    <p class="sub">默认按 Total 排序。定时探测跑在 Node 里，关页面也继续；UI 只负责启停与看图。</p>
 
     <section class="panel" id="health-panel">
       <div class="row">
@@ -195,8 +195,8 @@
             <option value="ttft">TTFT 首包</option>
           </select>
         </label>
-        <label class="row" style="flex:1">prompt
-          <input class="grow" type="text" id="prompt" value="你好" />
+        <label class="row" style="flex:1">prompt 前缀（可选，仍会加随机防缓存）
+          <input class="grow" type="text" id="prompt" value="" placeholder="留空=完全随机短问" />
         </label>
         <button type="button" class="secondary" id="btn-models" disabled>加载模型</button>
         <button type="button" id="btn-bench" disabled>一键测速</button>
@@ -220,8 +220,8 @@
           <tr>
             <th class="num">#</th>
             <th>Model</th>
-            <th class="num">TTFT (s)</th>
             <th class="num">Total (s)</th>
+            <th class="num">TTFT (s)</th>
             <th class="num">OK</th>
           </tr>
         </thead>
@@ -235,19 +235,19 @@
     <section class="panel">
       <div class="row">
         <strong>定时探测 · 稳定性</strong>
-        <label><input type="checkbox" id="watch-on" /> 开启（需保持本页打开）</label>
+        <label><input type="checkbox" id="watch-on" /> 开启（Node 服务端定时，可关页面）</label>
         <label>间隔(分) <input type="number" id="watch-min" min="1" max="120" value="10" /></label>
         <button type="button" class="secondary" id="btn-watch-now" disabled>立刻探测一次</button>
         <button type="button" class="secondary" id="btn-watch-clear">清空历史</button>
       </div>
-      <p class="hint">每轮写入浏览器 localStorage；按 Total 画折线。稳度 = 多次 Total 的标准差（越低越稳），并给出均值。</p>
+      <p class="hint">定时在 Node 进程内跑；每次随机 prompt 防缓存。排行按 <strong>Avg Total</strong>。折线=Total 走势。</p>
       <div class="status" id="watch-status"></div>
       <div class="chart-wrap">
         <svg id="chart" viewBox="0 0 900 280" preserveAspectRatio="none" aria-label="Total latency over time"></svg>
       </div>
       <div class="legend" id="chart-legend"></div>
       <div class="row" style="margin-top:14px">
-        <strong>稳度排行</strong>
+        <strong>均值排行（Total）</strong>
         <span id="stable-rec"></span>
       </div>
       <table>
@@ -268,90 +268,33 @@
   </main>
   <script>
     const $ = (id) => document.getElementById(id);
-    const HISTORY_KEY = 'model-bench.watch.v1';
-    const MAX_PROBES = 144; // 10min * 144 ≈ 24h
     const LINE_COLORS = [
-      '#0b3d2e', '#b85c38', '#2f5d8c', '#6b4c9a', '#c43d5a',
-      '#3d7a5a', '#8a6d3b', '#1f6b8a', '#7a3e5c', '#4a6741',
+      '#e63946', '#ff9f1c', '#00bbf9', '#9b5de5', '#00f5d4',
+      '#f15bb5', '#fee440', '#3a86ff', '#fb5607', '#06d6a0',
     ];
 
     let ready = false;
     let busy = false;
-    let watchTimer = null;
+    let watchPoll = null;
+    let syncingWatchUi = false;
 
-    function loadHistory() {
-      try {
-        const raw = localStorage.getItem(HISTORY_KEY);
-        if (!raw) return { probes: [] };
-        const data = JSON.parse(raw);
-        return { probes: Array.isArray(data.probes) ? data.probes : [] };
-      } catch {
-        return { probes: [] };
-      }
+    function watchConfigPayload() {
+      return {
+        intervalMin: Number($('watch-min').value) || 10,
+        models: selectedModels(),
+        prompt: $('prompt').value || '',
+        rounds: Number($('rounds').value) || 1,
+        concurrency: Number($('concurrency').value) || 6,
+        staggerMs: Number($('staggerMs').value) || 1000,
+        sortBy: 'total',
+        runNow: true,
+      };
     }
 
-    function saveHistory(hist) {
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(hist));
-    }
-
-    function appendProbe(final) {
-      const hist = loadHistory();
-      const points = [];
-      for (const r of (final.ranked || [])) {
-        if (r.model && r.totalSec != null) {
-          points.push({
-            model: r.model,
-            totalSec: Number(r.totalSec),
-            ttftSec: r.ttftSec != null ? Number(r.ttftSec) : null,
-          });
-        }
-      }
-      hist.probes.push({ at: final.at || new Date().toISOString(), points });
-      if (hist.probes.length > MAX_PROBES) {
-        hist.probes = hist.probes.slice(-MAX_PROBES);
-      }
-      saveHistory(hist);
-      renderWatch();
-    }
-
-    function mean(arr) {
-      if (!arr.length) return null;
-      return arr.reduce((a, b) => a + b, 0) / arr.length;
-    }
-
-    function stddev(arr) {
-      if (arr.length < 2) return 0;
-      const m = mean(arr);
-      const v = arr.reduce((s, x) => s + (x - m) * (x - m), 0) / (arr.length - 1);
-      return Math.sqrt(v);
-    }
-
-    function stabilityStats(hist) {
-      const byModel = new Map();
-      for (const probe of hist.probes) {
-        for (const p of probe.points || []) {
-          if (!byModel.has(p.model)) byModel.set(p.model, []);
-          byModel.get(p.model).push(p.totalSec);
-        }
-      }
-      const rows = [];
-      for (const [model, vals] of byModel) {
-        rows.push({
-          model,
-          avg: mean(vals),
-          sd: stddev(vals),
-          n: vals.length,
-        });
-      }
-      // most stable: prefer n>=3, then lowest stddev, then lowest avg
-      rows.sort((a, b) => {
-        const aOk = a.n >= 3 ? 0 : 1;
-        const bOk = b.n >= 3 ? 0 : 1;
-        if (aOk !== bOk) return aOk - bOk;
-        if (a.sd !== b.sd) return a.sd - b.sd;
-        return a.avg - b.avg;
-      });
-      return rows;
+    async function fetchWatchStatus() {
+      const res = await fetch('/api/watch');
+      if (!res.ok) throw new Error('watch status HTTP ' + res.status);
+      return res.json();
     }
 
     function renderStabilityTable(rows) {
@@ -364,31 +307,26 @@
       }
       rows.forEach((r, i) => {
         const tr = document.createElement('tr');
-        if (i === 0 && r.n >= 3) tr.className = 'top';
+        if (i === 0 && r.n >= 1) tr.className = 'top';
         tr.innerHTML =
           '<td class="num">' + (i + 1) + '</td>' +
-          '<td>' + escapeHtml(r.model) + (i === 0 && r.n >= 3 ? '<span class="pill">most stable</span>' : '') + '</td>' +
-          '<td class="num">' + r.avg.toFixed(2) + '</td>' +
-          '<td class="num">' + r.sd.toFixed(2) + '</td>' +
+          '<td>' + escapeHtml(r.model) + (i === 0 ? '<span class="pill">lowest avg total</span>' : '') + '</td>' +
+          '<td class="num">' + Number(r.avg).toFixed(2) + '</td>' +
+          '<td class="num">' + Number(r.sd).toFixed(2) + '</td>' +
           '<td class="num">' + r.n + '</td>';
         body.appendChild(tr);
       });
-      const top = rows.find((r) => r.n >= 3) || rows[0];
-      if (top.n >= 3) {
-        $('stable-rec').innerHTML =
-          '最稳：<code>' + escapeHtml(top.model) + '</code>（σ=' +
-          top.sd.toFixed(2) + 's，avg=' + top.avg.toFixed(2) + 's，n=' + top.n + '）';
-      } else {
-        $('stable-rec').textContent = '样本不足 3 次，稳度仅供参考';
-      }
+      const top = rows[0];
+      $('stable-rec').innerHTML =
+        '均值最快：<code>' + escapeHtml(top.model) + '</code>（avg Total=' +
+        Number(top.avg).toFixed(2) + 's，σ=' + Number(top.sd).toFixed(2) + 's，n=' + top.n + '）';
     }
 
-    function renderChart(hist) {
+    function renderChart(probes) {
       const svg = $('chart');
       const legend = $('chart-legend');
       legend.innerHTML = '';
-      const probes = hist.probes;
-      if (probes.length < 1) {
+      if (!probes || probes.length < 1) {
         svg.innerHTML = '<text x="20" y="140" fill="#5c5c5c" font-size="14">暂无数据</text>';
         return;
       }
@@ -397,7 +335,6 @@
       for (const p of probes) {
         for (const pt of p.points || []) modelSet.add(pt.model);
       }
-      // Prefer currently selected; else all (cap 10 lines)
       let models = selectedModels().filter((m) => modelSet.has(m));
       if (!models.length) models = [...modelSet];
       models = models.slice(0, 10);
@@ -426,7 +363,6 @@
       const yAt = (v) => T + ih - ((v - lo) / (hi - lo || 1)) * ih;
 
       let html = '';
-      // grid
       for (let g = 0; g <= 4; g++) {
         const y = T + (ih * g) / 4;
         const val = hi - ((hi - lo) * g) / 4;
@@ -434,7 +370,6 @@
         html += '<text x="' + (L - 6) + '" y="' + (y + 4) + '" text-anchor="end" fill="#5c5c5c" font-size="11">' +
           val.toFixed(1) + '</text>';
       }
-      // x labels: first / mid / last
       const labelIdx = n === 1 ? [0] : n === 2 ? [0, 1] : [0, Math.floor((n - 1) / 2), n - 1];
       for (const i of labelIdx) {
         const t = probes[i].at || '';
@@ -455,13 +390,13 @@
           const cmd = started ? 'L' : 'M';
           parts.push(cmd + ' ' + xAt(i) + ' ' + yAt(v));
           started = true;
-          html += '<circle cx="' + xAt(i) + '" cy="' + yAt(v) + '" r="3" fill="' + color + '" />';
+          html += '<circle cx="' + xAt(i) + '" cy="' + yAt(v) + '" r="4" fill="' + color + '" stroke="#fff" stroke-width="1" />';
         });
         if (parts.length) {
-          html += '<path d="' + parts.join(' ') + '" fill="none" stroke="' + color + '" stroke-width="2" />';
+          html += '<path d="' + parts.join(' ') + '" fill="none" stroke="' + color + '" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" />';
         }
         const leg = document.createElement('span');
-        leg.innerHTML = '<i class="swatch" style="background:' + color + '"></i>' + escapeHtml(s.model);
+        leg.innerHTML = '<i class="swatch" style="background:' + color + ';height:4px;width:16px"></i>' + escapeHtml(s.model);
         legend.appendChild(leg);
       });
 
@@ -469,13 +404,39 @@
       svg.innerHTML = html;
     }
 
-    function renderWatch() {
-      const hist = loadHistory();
-      $('watch-status').textContent =
-        '历史探测 ' + hist.probes.length + ' 次' +
-        (hist.probes.length ? ' · 最近 ' + hist.probes[hist.probes.length - 1].at : '');
-      renderChart(hist);
-      renderStabilityTable(stabilityStats(hist));
+    function applyWatchStatus(st) {
+      syncingWatchUi = true;
+      $('watch-on').checked = !!st.enabled;
+      if (st.intervalMin) $('watch-min').value = st.intervalMin;
+      syncingWatchUi = false;
+
+      let msg = st.enabled
+        ? ('服务端定时 ON · 每 ' + st.intervalMin + ' 分钟 · 历史 ' + st.probeCount + ' 次')
+        : ('服务端定时 OFF · 历史 ' + (st.probeCount || 0) + ' 次');
+      if (st.running) msg += ' · 正在探测…';
+      if (st.lastRunAt) msg += ' · 最近 ' + st.lastRunAt;
+      if (st.lastError) msg += '\n错误: ' + st.lastError;
+      $('watch-status').className = st.lastError ? 'status bad' : (st.enabled ? 'status ok' : 'status');
+      $('watch-status').textContent = msg;
+      renderChart(st.probes || []);
+      renderStabilityTable(st.stability || []);
+    }
+
+    async function refreshWatch() {
+      try {
+        const st = await fetchWatchStatus();
+        applyWatchStatus(st);
+      } catch (e) {
+        $('watch-status').className = 'status bad';
+        $('watch-status').textContent = String(e.message || e);
+      }
+    }
+
+    function startWatchPoll() {
+      if (watchPoll) return;
+      watchPoll = setInterval(() => {
+        refreshWatch();
+      }, 15000);
     }
 
     async function loadHealth() {
@@ -511,15 +472,15 @@
         msg.textContent = String(e.message || e);
         help.classList.remove('hidden');
       }
-      renderWatch();
+      await refreshWatch();
+      startWatchPoll();
     }
 
     function setControls(on) {
       ['btn-models', 'btn-bench', 'btn-all', 'btn-none', 'btn-watch-now'].forEach((id) => {
-        $(id).disabled = !on || (id !== 'btn-watch-now' && busy);
+        $(id).disabled = !on || busy;
       });
-      $('btn-watch-now').disabled = !on || busy;
-      $('btn-bench').disabled = !on || busy;
+      $('watch-on').disabled = !on;
     }
 
     function selectedModels() {
@@ -543,7 +504,7 @@
           cb.type = 'checkbox';
           cb.value = id;
           cb.checked = true;
-          cb.addEventListener('change', () => renderWatch());
+          cb.addEventListener('change', () => refreshWatch());
           const span = document.createElement('span');
           span.textContent = id;
           label.appendChild(cb);
@@ -551,7 +512,7 @@
           frag.appendChild(label);
         }
         $('models').appendChild(frag);
-        renderWatch();
+        await refreshWatch();
       } catch (e) {
         $('model-meta').textContent = '';
         $('run-status').className = 'status bad';
@@ -574,8 +535,8 @@
           tr.innerHTML =
             '<td class="num">' + (i + 1) + '</td>' +
             '<td>' + escapeHtml(r.model) + (i === 0 ? '<span class="pill">recommended</span>' : '') + '</td>' +
-            '<td class="num">' + ttft + '</td>' +
             '<td class="num">' + total + '</td>' +
+            '<td class="num">' + ttft + '</td>' +
             '<td class="num">' + r.okRounds + '/' + r.rounds + '</td>';
           body.appendChild(tr);
         });
@@ -601,7 +562,7 @@
       })[c]);
     }
 
-    async function runBench({ record = true, fromWatch = false } = {}) {
+    async function runBench() {
       if (!ready || busy) return;
       const models = selectedModels();
       if (!models.length) {
@@ -612,17 +573,16 @@
       busy = true;
       setControls(false);
       $('run-status').className = 'status';
-      $('run-status').textContent = fromWatch ? '定时探测中…' : '测速中…';
-      if (!fromWatch) {
-        $('rec').textContent = '';
-        $('fail-box').textContent = '';
-      }
+      $('run-status').textContent = '测速中…';
+      $('rec').textContent = '';
+      $('fail-box').textContent = '';
 
       const payload = {
         models,
         rounds: Number($('rounds').value) || 1,
-        prompt: $('prompt').value || '你好',
-        sortBy: $('sortBy').value === 'ttft' ? 'ttft' : 'total',
+        prompt: $('prompt').value || '',
+        randomizePrompt: true,
+        sortBy: 'total',
         concurrency: Number($('concurrency').value) || 6,
         staggerMs: Number($('staggerMs').value) || 1000,
       };
@@ -659,8 +619,11 @@
             if (!dataLine) continue;
             let data;
             try { data = JSON.parse(dataLine); } catch { continue; }
+            if (event === 'progress' && data.type === 'round_prompt') {
+              $('run-status').textContent = '本轮 prompt: ' + data.prompt;
+            }
             if (event === 'progress' && data.type === 'model_start') {
-              $('run-status').textContent = (fromWatch ? '定时探测 → ' : '测速中 → ') + data.model;
+              $('run-status').textContent = '测速中 → ' + data.model;
             }
             if (event === 'progress' && data.type === 'model_done') {
               const r = data.result;
@@ -674,9 +637,8 @@
         }
         if (!final) throw new Error('未收到完成事件');
         renderRank(final);
-        if (record) appendProbe(final);
         $('run-status').className = 'status ok';
-        $('run-status').textContent = (fromWatch ? '定时探测完成 @ ' : '完成 @ ') + (final.at || '');
+        $('run-status').textContent = '完成 @ ' + (final.at || '');
       } catch (e) {
         $('run-status').className = 'status bad';
         $('run-status').textContent = String(e.message || e);
@@ -686,59 +648,85 @@
       }
     }
 
-    function stopWatch() {
-      if (watchTimer) {
-        clearInterval(watchTimer);
-        watchTimer = null;
-      }
-    }
-
-    function startWatch() {
-      stopWatch();
-      const mins = Math.max(1, Number($('watch-min').value) || 10);
-      const ms = mins * 60 * 1000;
-      watchTimer = setInterval(() => {
-        if (document.hidden) {
-          $('watch-status').textContent =
-            (loadHistory().probes.length ? '历史 ' + loadHistory().probes.length + ' 次 · ' : '') +
-            '标签页在后台，浏览器可能推迟定时；切回前台会继续';
-        }
-        runBench({ record: true, fromWatch: true });
-      }, ms);
-      $('watch-status').className = 'status ok';
-      $('watch-status').textContent =
-        '已开启：每 ' + mins + ' 分钟探测当前勾选模型（保持页面打开）';
-    }
-
     $('btn-reload-health').onclick = loadHealth;
     $('btn-models').onclick = loadModels;
-    $('btn-bench').onclick = () => runBench({ record: true, fromWatch: false });
+    $('btn-bench').onclick = runBench;
     $('btn-all').onclick = () => {
       document.querySelectorAll('#models input[type=checkbox]').forEach((el) => { el.checked = true; });
-      renderWatch();
+      refreshWatch();
     };
     $('btn-none').onclick = () => {
       document.querySelectorAll('#models input[type=checkbox]').forEach((el) => { el.checked = false; });
-      renderWatch();
+      refreshWatch();
     };
-    $('btn-watch-now').onclick = () => runBench({ record: true, fromWatch: true });
-    $('btn-watch-clear').onclick = () => {
-      if (confirm('清空本机定时探测历史？')) {
-        saveHistory({ probes: [] });
-        renderWatch();
+    $('btn-watch-now').onclick = async () => {
+      if (!ready || busy) return;
+      busy = true;
+      setControls(false);
+      $('watch-status').textContent = '服务端立刻探测中…';
+      try {
+        const res = await fetch('/api/watch/probe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(watchConfigPayload()),
+        });
+        const data = await res.json();
+        if (data.status) applyWatchStatus(data.status);
+        else await refreshWatch();
+        if (data.skipped) {
+          $('watch-status').className = 'status';
+          $('watch-status').textContent = '已有探测在跑，请稍候';
+        } else if (data.ok === false) {
+          throw new Error(data.error || 'probe failed');
+        }
+      } catch (e) {
+        $('watch-status').className = 'status bad';
+        $('watch-status').textContent = String(e.message || e);
+      } finally {
+        busy = false;
+        if (ready) setControls(true);
+        await refreshWatch();
       }
     };
-    $('watch-on').onchange = () => {
-      if ($('watch-on').checked) {
-        startWatch();
-        runBench({ record: true, fromWatch: true }); // 开启时先打一轮，不必干等 10 分钟
-      } else {
-        stopWatch();
-        renderWatch();
+    $('btn-watch-clear').onclick = async () => {
+      if (!confirm('清空服务端定时探测历史？')) return;
+      await fetch('/api/watch/clear', { method: 'POST' });
+      await refreshWatch();
+    };
+    $('watch-on').onchange = async () => {
+      if (syncingWatchUi) return;
+      if (!ready) {
+        $('watch-on').checked = false;
+        return;
+      }
+      try {
+        if ($('watch-on').checked) {
+          const res = await fetch('/api/watch/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(watchConfigPayload()),
+          });
+          const st = await res.json();
+          applyWatchStatus(st);
+        } else {
+          const res = await fetch('/api/watch/stop', { method: 'POST' });
+          const st = await res.json();
+          applyWatchStatus(st);
+        }
+      } catch (e) {
+        $('watch-status').className = 'status bad';
+        $('watch-status').textContent = String(e.message || e);
+        await refreshWatch();
       }
     };
-    $('watch-min').onchange = () => {
-      if ($('watch-on').checked) startWatch();
+    $('watch-min').onchange = async () => {
+      if (syncingWatchUi || !$('watch-on').checked) return;
+      await fetch('/api/watch/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...watchConfigPayload(), runNow: false }),
+      });
+      await refreshWatch();
     };
 
     loadHealth();

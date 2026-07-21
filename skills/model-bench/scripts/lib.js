@@ -97,10 +97,46 @@ async function fetchModels(apiRoot, apiKey, { timeoutMs = 30000 } = {}) {
   }
 }
 
-/** ms → seconds, 2 decimal places (Claude Code cares about TTFT in seconds). */
+/** ms → seconds, 2 decimal places. */
 function msToSec(ms) {
   if (ms == null || Number.isNaN(ms)) return null;
   return Math.round(Number(ms) / 10) / 100;
+}
+
+const PROBE_TOPICS = [
+  '今天适合散步吗',
+  '咖啡和茶哪个提神',
+  '一句话解释什么是哈希',
+  '推荐一个放松方式',
+  '圆周率前五位是什么',
+  '南北方冬天有何不同',
+  '如何保持专注',
+  '列举三种常见排序',
+  '海水为什么是咸的',
+  '用一个比喻说明缓存',
+  '周一和周五心情差在哪',
+  '什么是幂等',
+];
+
+/**
+ * Build a unique probe prompt each call to avoid gateway/prompt cache.
+ * Same string is reused for all models within one bench round (fair compare).
+ */
+function buildProbePrompt(base) {
+  const nonce = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  const topic = PROBE_TOPICS[Math.floor(Math.random() * PROBE_TOPICS.length)];
+  const templates = [
+    `请用不超过30字回答：${topic}？(probe:${nonce})`,
+    `一句话回复即可：${topic}。[${nonce}]`,
+    `简答（防缓存 ${nonce}）：${topic}`,
+    `用中文短句说明：${topic} #${nonce}`,
+  ];
+  const picked = templates[Math.floor(Math.random() * templates.length)];
+  const custom = typeof base === 'string' ? base.trim() : '';
+  if (custom && custom !== '你好' && !/^auto$/i.test(custom)) {
+    return `${custom}\n\n(probe:${nonce} · ${topic})`;
+  }
+  return picked;
 }
 
 function sleep(ms) {
@@ -276,7 +312,8 @@ const measureFirstToken = measureStream;
  * Rounds within one model stay sequential.
  */
 async function benchModels(apiRoot, apiKey, models, {
-  prompt = '你好',
+  prompt = null,
+  randomizePrompt = true,
   rounds = 1,
   timeoutMs = 120000,
   sortBy = 'total',
@@ -286,15 +323,33 @@ async function benchModels(apiRoot, apiKey, models, {
 } = {}) {
   const list = [...models];
 
-  async function benchOne(model) {
-    if (onProgress) onProgress({ type: 'model_start', model });
-    const samples = [];
-    for (let r = 0; r < rounds; r++) {
-      if (onProgress) onProgress({ type: 'round_start', model, round: r + 1, rounds });
-      const sample = await measureStream(apiRoot, apiKey, model, prompt, { timeoutMs });
-      samples.push(sample);
-      if (onProgress) onProgress({ type: 'round_done', model, round: r + 1, sample });
+  // Generate one fresh prompt per round (shared across models), never reuse fixed cacheable text.
+  const resultsByModel = new Map(list.map((m) => [m, []]));
+
+  for (let r = 0; r < rounds; r++) {
+    const promptForRound = randomizePrompt
+      ? buildProbePrompt(prompt)
+      : (prompt && String(prompt).trim() ? String(prompt).trim() : buildProbePrompt(null));
+    if (onProgress) onProgress({ type: 'round_prompt', round: r + 1, prompt: promptForRound });
+
+    const roundEntries = await mapStaggered(
+      list,
+      { concurrency, staggerMs },
+      async (model) => {
+        if (onProgress) onProgress({ type: 'model_start', model, round: r + 1, rounds });
+        const sample = await measureStream(apiRoot, apiKey, model, promptForRound, { timeoutMs });
+        sample.prompt = promptForRound;
+        if (onProgress) onProgress({ type: 'round_done', model, round: r + 1, sample });
+        return { model, sample };
+      },
+    );
+    for (const { model, sample } of roundEntries) {
+      resultsByModel.get(model).push(sample);
     }
+  }
+
+  const results = list.map((model) => {
+    const samples = resultsByModel.get(model) || [];
     const okSamples = samples.filter((s) => s.ok && typeof s.firstTokenMs === 'number');
     const firsts = okSamples.map((s) => s.firstTokenMs);
     const totals = okSamples.map((s) => s.totalMs).filter((n) => typeof n === 'number');
@@ -318,25 +373,28 @@ async function benchModels(apiRoot, apiKey, models, {
     };
     if (onProgress) onProgress({ type: 'model_done', result: entry });
     return entry;
-  }
+  });
 
-  const results = await mapStaggered(
-    list,
-    { concurrency, staggerMs },
-    (model) => benchOne(model),
-  );
-
+  // Always rank primarily by total wall time (agent waits for full turn).
   const keyMs = sortBy === 'ttft' ? 'firstTokenMsAvg' : 'totalMsAvg';
   const ranked = [...results]
     .filter((r) => r.ok && r[keyMs] != null)
     .sort((a, b) => a[keyMs] - b[keyMs]);
   const failed = results.filter((r) => !r.ok);
 
+  const lastPrompt = (() => {
+    for (const r of results) {
+      const s = (r.samples || [])[r.samples.length - 1];
+      if (s && s.prompt) return s.prompt;
+    }
+    return prompt || null;
+  })();
+
   return {
     results,
     ranked,
     failed,
-    prompt,
+    prompt: lastPrompt,
     rounds,
     concurrency: Number.isFinite(concurrency) ? concurrency : list.length,
     staggerMs,
@@ -352,12 +410,12 @@ function formatRankTable(bench) {
   lines.push(`# Model bench · TTFT + total (seconds) @ ${bench.at}`);
   lines.push(`sort: ${sortLabel}  concurrency: ${bench.concurrency}  stagger: ${bench.staggerMs}ms  prompt: ${JSON.stringify(bench.prompt)}  rounds: ${bench.rounds}`);
   lines.push('');
-  lines.push('| Rank | Model | TTFT (s) | Total (s) | OK |');
+  lines.push('| Rank | Model | Total (s) | TTFT (s) | OK |');
   lines.push('| ---: | --- | ---: | ---: | ---: |');
   bench.ranked.forEach((r, i) => {
     const ttft = r.ttftSec != null ? r.ttftSec.toFixed(2) : '-';
     const total = r.totalSec != null ? r.totalSec.toFixed(2) : '-';
-    lines.push(`| ${i + 1} | ${r.model} | ${ttft} | ${total} | ${r.okRounds}/${r.rounds} |`);
+    lines.push(`| ${i + 1} | ${r.model} | ${total} | ${ttft} | ${r.okRounds}/${r.rounds} |`);
   });
   if (bench.failed.length) {
     lines.push('');
@@ -414,6 +472,8 @@ module.exports = {
   formatRankTable,
   saveHistory,
   configDir,
+  ensureConfigDir,
   msToSec,
   mapStaggered,
+  buildProbePrompt,
 };

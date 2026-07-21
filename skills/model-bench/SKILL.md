@@ -55,7 +55,7 @@ model-bench Progress:
 | `ui` / `--ui` | off | 启动本地 HTML（`127.0.0.1:8787`） |
 | `--port N` | 8787 | UI 端口 |
 | `--rounds N` | 1 | 每模型轮数（UI 也可设，最大 5） |
-| `--prompt TEXT` | 你好 | 探测用 user 消息 |
+| `--prompt TEXT` | 随机 | 可选前缀；每轮仍随机化防缓存 |
 | `--sort ttft\|total` | total | 默认 total（等整轮结束再下一步）；ttft 看首包体感 |
 | `--concurrency N` / `-c` | 6 | 最大同时测几个模型（防打爆主力） |
 | `--stagger MS` | 1000 | 每个模型启动间隔；限流主要靠 concurrency |
@@ -103,7 +103,7 @@ node scripts/bench.js ui
 
 启动后打开输出的 `http://127.0.0.1:8787/`。  
 页面：进入拉 `/api/models` → 勾选 → **一键测速**。  
-**定时探测（仅 UI）**：开启后每 N 分钟（默认 10）自动测当前勾选模型，localStorage 存历史，SVG 折线看 Total 走势，稳度按标准差排序。须保持页面打开（关标签即停）。
+**定时探测**：在 UI 点开启后由 **Node 进程** `setInterval` 执行（可关浏览器）。状态持久化 `~/.config/model-bench/watch-state.json`；重启 `bench.js ui` 若 enabled 会自动续跑。UI 仅启停/看折线（约 15s 刷新一次）。
 
 后台跑 UI 时告知用户 URL，并说明 Ctrl+C 结束。
 
@@ -129,5 +129,5 @@ node scripts/bench.js ui
 - [ ] 测的是 **stream 首包 TTFT（秒）**（`delta.content` 首次非空）
 - [ ] 模型列表来自 `/v1/models`（或用户显式 `--models`）
 - [ ] 有排行（TTFT s）+ 当前推荐
-- [ ] UI 模式已给出本地 URL；若开定时探测，说明需保持页面打开
+- [ ] UI 模式已给出本地 URL；定时探测在 Node 侧，说明可关页面
 - [ ] 未引入重型图表库（SVG 原生折线）

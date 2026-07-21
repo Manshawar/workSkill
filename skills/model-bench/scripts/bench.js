@@ -38,7 +38,7 @@ function parseArgs(argv) {
     json: false,
     save: true,
     rounds: 1,
-    prompt: '你好',
+    prompt: null,
     models: null,
     exclude: [],
     port: 8787,
@@ -84,7 +84,8 @@ function usage() {
 
 Options:
   --rounds N            default 1 (per model, sequential)
-  --prompt TEXT         default 你好
+  --prompt TEXT         optional base; each round still adds random anti-cache suffix
+                        (default: fully random short prompts)
   --models a,b,c        only these ids
   --exclude a,b         skip these ids
   --sort ttft|total     default total (wait-for-full-turn agents); ttft = first token

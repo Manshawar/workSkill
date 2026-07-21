@@ -15,6 +15,7 @@ const {
   benchModels,
   saveHistory,
 } = require('./lib');
+const watch = require('./watch');
 
 const UI_PATH = path.join(__dirname, '..', 'assets', 'ui.html');
 
@@ -117,9 +118,10 @@ function createServer() {
           models = await fetchModels(gw.apiRoot, gw.apiKey);
         }
         const rounds = Math.max(1, Math.min(5, parseInt(body.rounds, 10) || 1));
-        const prompt = typeof body.prompt === 'string' && body.prompt.trim() ? body.prompt.trim() : '你好';
+        const prompt = typeof body.prompt === 'string' ? body.prompt : null;
         const timeoutMs = Math.max(5000, parseInt(body.timeoutMs, 10) || 120000);
         const sortBy = body.sortBy === 'ttft' ? 'ttft' : 'total';
+        const randomizePrompt = body.randomizePrompt !== false;
         const staggerMs = Math.max(0, parseInt(body.staggerMs, 10) || 1000);
         let concurrency = 6;
         if (body.concurrency === 'all' || body.concurrency === 0) {
@@ -139,9 +141,10 @@ function createServer() {
           res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
         };
 
-        send('start', { count: models.length, rounds, prompt, sortBy, concurrency, staggerMs });
+        send('start', { count: models.length, rounds, sortBy, concurrency, staggerMs, randomizePrompt });
         const bench = await benchModels(gw.apiRoot, gw.apiKey, models, {
           prompt,
+          randomizePrompt,
           rounds,
           timeoutMs,
           sortBy,
@@ -170,6 +173,34 @@ function createServer() {
         return;
       }
 
+      if (req.method === 'GET' && pathname === '/api/watch') {
+        return sendJson(res, 200, watch.getStatus());
+      }
+
+      if (req.method === 'POST' && pathname === '/api/watch/start') {
+        const body = await readBody(req);
+        const status = watch.startWatch(body);
+        return sendJson(res, 200, status);
+      }
+
+      if (req.method === 'POST' && pathname === '/api/watch/stop') {
+        return sendJson(res, 200, watch.stopWatch());
+      }
+
+      if (req.method === 'POST' && pathname === '/api/watch/probe') {
+        const body = await readBody(req);
+        if (body && Object.keys(body).length) {
+          watch.applyConfig(body);
+        }
+        const result = await watch.runProbe('manual');
+        const statusCode = result.skipped ? 409 : (result.ok === false ? 500 : 200);
+        return sendJson(res, statusCode, result);
+      }
+
+      if (req.method === 'POST' && pathname === '/api/watch/clear') {
+        return sendJson(res, 200, watch.clearHistory());
+      }
+
       sendJson(res, 404, { error: 'not found' });
     } catch (e) {
       if (e && e.code === 'ENV_MISSING') {
@@ -195,6 +226,7 @@ function createServer() {
 }
 
 function start({ port = 8787 } = {}) {
+  watch.bootstrap();
   const env = readEnv();
   const server = createServer();
   server.listen(port, '127.0.0.1', () => {
@@ -208,6 +240,12 @@ function start({ port = 8787 } = {}) {
       } catch (e) {
         console.log(`WARN: ${e.message}`);
       }
+    }
+    const st = watch.getStatus();
+    if (st.enabled) {
+      console.log(`[watch] ON · every ${st.intervalMin}min · probes=${st.probeCount} · ${st.stateFile}`);
+    } else {
+      console.log('[watch] OFF · enable from UI (runs in this Node process)');
     }
     console.log('Ctrl+C to stop.');
   });
