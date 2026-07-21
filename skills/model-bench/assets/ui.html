@@ -150,7 +150,7 @@
 <body>
   <main>
     <h1>model-bench</h1>
-    <p class="sub">展示 TTFT（首包）+ Total（整段流式）；默认按 TTFT 排序（Claude Code）。不展示墙钟结束时间。</p>
+    <p class="sub">模型并发测速；启动默认错开 1s（靠 concurrency 限流）。展示 TTFT + Total，默认按 TTFT 排序。</p>
 
     <section class="panel" id="health-panel">
       <div class="row">
@@ -172,6 +172,8 @@
     <section class="panel">
       <div class="row">
         <label>rounds <input type="number" id="rounds" min="1" max="5" value="1" /></label>
+        <label>concurrency <input type="number" id="concurrency" min="1" max="50" value="6" title="同时进行中的模型数；防打爆主要靠这个" /></label>
+        <label>stagger(ms) <input type="number" id="staggerMs" min="0" step="500" value="1000" /></label>
         <label>sort
           <select id="sortBy">
             <option value="ttft" selected>TTFT（推荐）</option>
@@ -357,6 +359,8 @@
         rounds: Number($('rounds').value) || 1,
         prompt: $('prompt').value || '你好',
         sortBy: $('sortBy').value === 'total' ? 'total' : 'ttft',
+        concurrency: Number($('concurrency').value) || 6,
+        staggerMs: Number($('staggerMs').value) || 1000,
       };
 
       try {

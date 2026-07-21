@@ -103,6 +103,58 @@ function msToSec(ms) {
   return Math.round(Number(ms) / 10) / 100;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Simple semaphore for max in-flight jobs. */
+function createSemaphore(max) {
+  let active = 0;
+  const waiters = [];
+  const acquire = () => new Promise((resolve) => {
+    if (active < max) {
+      active += 1;
+      resolve();
+    } else {
+      waiters.push(resolve);
+    }
+  });
+  const release = () => {
+    active -= 1;
+    const next = waiters.shift();
+    if (next) {
+      active += 1;
+      next();
+    }
+  };
+  return { acquire, release };
+}
+
+/**
+ * Run jobs concurrently with staggered starts (default 1s) to avoid slamming the gateway.
+ * Item i is eligible to start at T0 + i * staggerMs; concurrency caps in-flight work.
+ */
+async function mapStaggered(items, { concurrency = Infinity, staggerMs = 1000 }, fn) {
+  if (!items.length) return [];
+  const limit = Number.isFinite(concurrency)
+    ? Math.max(1, Math.min(concurrency, items.length))
+    : items.length;
+  const sem = createSemaphore(limit);
+  const t0 = Date.now();
+
+  return Promise.all(items.map((item, i) => (async () => {
+    const target = t0 + i * Math.max(0, staggerMs);
+    const wait = target - Date.now();
+    if (wait > 0) await sleep(wait);
+    await sem.acquire();
+    try {
+      return await fn(item, i);
+    } finally {
+      sem.release();
+    }
+  })()));
+}
+
 /**
  * Stream chat to completion. Capture:
  * - TTFT: first non-empty delta.content
@@ -217,20 +269,24 @@ async function measureStream(apiRoot, apiKey, model, prompt, { timeoutMs = 12000
 const measureFirstToken = measureStream;
 
 /**
- * Bench multiple models. onProgress({ type, ... }) optional.
+ * Bench multiple models concurrently (staggered starts).
  * sortBy: 'ttft' (default, Claude Code) | 'total'
+ * concurrency: max in-flight models (default = all)
+ * staggerMs: delay between each model start (default 1000)
+ * Rounds within one model stay sequential.
  */
 async function benchModels(apiRoot, apiKey, models, {
   prompt = '你好',
   rounds = 1,
   timeoutMs = 120000,
   sortBy = 'ttft',
+  concurrency = 6,
+  staggerMs = 1000,
   onProgress,
 } = {}) {
-  const results = [];
   const list = [...models];
 
-  for (const model of list) {
+  async function benchOne(model) {
     if (onProgress) onProgress({ type: 'model_start', model });
     const samples = [];
     for (let r = 0; r < rounds; r++) {
@@ -253,18 +309,22 @@ async function benchModels(apiRoot, apiKey, models, {
       ok: firsts.length > 0,
       rounds: samples.length,
       okRounds: firsts.length,
-      // Primary (Claude Code): avg TTFT seconds
       ttftSec: msToSec(avgTtftMs),
-      // Secondary: avg full-stream seconds
       totalSec: msToSec(avgTotalMs),
       firstTokenMsAvg: avgTtftMs,
       totalMsAvg: avgTotalMs,
       samples,
       error: firsts.length ? null : (samples.map((s) => s.error).filter(Boolean)[0] || 'all rounds failed'),
     };
-    results.push(entry);
     if (onProgress) onProgress({ type: 'model_done', result: entry });
+    return entry;
   }
+
+  const results = await mapStaggered(
+    list,
+    { concurrency, staggerMs },
+    (model) => benchOne(model),
+  );
 
   const keyMs = sortBy === 'total' ? 'totalMsAvg' : 'firstTokenMsAvg';
   const ranked = [...results]
@@ -278,6 +338,8 @@ async function benchModels(apiRoot, apiKey, models, {
     failed,
     prompt,
     rounds,
+    concurrency: Number.isFinite(concurrency) ? concurrency : list.length,
+    staggerMs,
     at: new Date().toISOString(),
     sortBy: sortBy === 'total' ? 'totalSec' : 'ttftSec',
     metric: sortBy === 'total' ? 'totalSec' : 'ttftSec',
@@ -288,7 +350,7 @@ function formatRankTable(bench) {
   const lines = [];
   const sortLabel = bench.sortBy === 'totalSec' ? 'totalSec' : 'ttftSec';
   lines.push(`# Model bench · TTFT + total (seconds) @ ${bench.at}`);
-  lines.push(`sort: ${sortLabel}  prompt: ${JSON.stringify(bench.prompt)}  rounds: ${bench.rounds}`);
+  lines.push(`sort: ${sortLabel}  concurrency: ${bench.concurrency}  stagger: ${bench.staggerMs}ms  prompt: ${JSON.stringify(bench.prompt)}  rounds: ${bench.rounds}`);
   lines.push('');
   lines.push('| Rank | Model | TTFT (s) | Total (s) | OK |');
   lines.push('| ---: | --- | ---: | ---: | ---: |');
@@ -323,6 +385,8 @@ function saveHistory(bench) {
   const slim = {
     at: bench.at,
     sortBy: bench.sortBy,
+    concurrency: bench.concurrency,
+    staggerMs: bench.staggerMs,
     prompt: bench.prompt,
     rounds: bench.rounds,
     ranked: bench.ranked.map((r) => ({
@@ -351,4 +415,5 @@ module.exports = {
   saveHistory,
   configDir,
   msToSec,
+  mapStaggered,
 };

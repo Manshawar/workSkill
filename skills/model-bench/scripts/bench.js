@@ -44,6 +44,8 @@ function parseArgs(argv) {
     port: 8787,
     timeoutMs: 120000,
     sortBy: 'ttft',
+    concurrency: 6,
+    staggerMs: 1000,
   };
   const args = argv.slice(2);
   for (let i = 0; i < args.length; i++) {
@@ -57,6 +59,14 @@ function parseArgs(argv) {
     else if (a === '--exclude') out.exclude = (args[++i] || '').split(',').map((s) => s.trim()).filter(Boolean);
     else if (a === '--port') out.port = parseInt(args[++i], 10) || out.port;
     else if (a === '--timeout') out.timeoutMs = parseInt(args[++i], 10) || out.timeoutMs;
+    else if (a === '--concurrency' || a === '-c') {
+      const n = parseInt(args[++i], 10);
+      out.concurrency = Number.isFinite(n) && n > 0 ? n : Infinity;
+    }
+    else if (a === '--stagger') {
+      const n = parseInt(args[++i], 10);
+      out.staggerMs = Number.isFinite(n) && n >= 0 ? n : 1000;
+    }
     else if (a === '--sort') {
       const v = (args[++i] || 'ttft').toLowerCase();
       out.sortBy = v === 'total' ? 'total' : 'ttft';
@@ -68,20 +78,22 @@ function parseArgs(argv) {
 
 function usage() {
   console.log(`Usage:
-  node bench.js                 # CLI: TTFT + total → rank (default sort: TTFT)
+  node bench.js                 # concurrent bench; starts staggered 1s apart
   node bench.js ui              # local UI (same as --ui)
   node bench.js --ui [--port 8787]
 
 Options:
-  --rounds N          default 1
-  --prompt TEXT       default 你好
-  --models a,b,c      only these ids
-  --exclude a,b       skip these ids
-  --sort ttft|total   default ttft (Claude Code); total = full stream
-  --timeout MS        per-request timeout (default 120000)
-  --json              print JSON instead of markdown table
-  --no-save           do not write ~/.config/model-bench/history/
-  --port N            UI port (default 8787)
+  --rounds N            default 1 (per model, sequential)
+  --prompt TEXT         default 你好
+  --models a,b,c        only these ids
+  --exclude a,b         skip these ids
+  --sort ttft|total     default ttft (Claude Code); total = full stream
+  --concurrency N / -c  max in-flight models (default: 6)
+  --stagger MS          delay between each model start (default 1000)
+  --timeout MS          per-request timeout (default 120000)
+  --json                print JSON instead of markdown table
+  --no-save             do not write ~/.config/model-bench/history/
+  --port N              UI port (default 8787)
 
 Env (required):
   ${ENV_BASE}   gateway origin, e.g. https://ai-gateway.example.com
@@ -111,12 +123,16 @@ async function runCli(opts) {
     process.exitCode = 1;
     return;
   }
-  process.stderr.write(`Benching ${models.length} model(s), rounds=${opts.rounds} ...\n`);
+  process.stderr.write(
+    `Benching ${models.length} model(s), rounds=${opts.rounds}, concurrency=${opts.concurrency === Infinity ? 'all' : opts.concurrency}, stagger=${opts.staggerMs}ms ...\n`,
+  );
   const bench = await benchModels(apiRoot, env.apiKey, models, {
     prompt: opts.prompt,
     rounds: opts.rounds,
     timeoutMs: opts.timeoutMs,
     sortBy: opts.sortBy,
+    concurrency: opts.concurrency,
+    staggerMs: opts.staggerMs,
     onProgress: (ev) => {
       if (ev.type === 'model_start') process.stderr.write(`  → ${ev.model}\n`);
       if (ev.type === 'model_done') {

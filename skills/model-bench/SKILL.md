@@ -57,12 +57,14 @@ model-bench Progress:
 | `--rounds N` | 1 | 每模型轮数（UI 也可设，最大 5） |
 | `--prompt TEXT` | 你好 | 探测用 user 消息 |
 | `--sort ttft\|total` | ttft | 排行键；Claude Code 用 ttft |
+| `--concurrency N` / `-c` | 6 | 最大同时测几个模型（防打爆主力） |
+| `--stagger MS` | 1000 | 每个模型启动间隔；限流主要靠 concurrency |
 | `--models a,b` | 全部 | 只测这些 id |
 | `--exclude a,b` | — | 排除 |
 | `--json` | off | CLI 输出 JSON |
 | `--no-save` | off | 不写 history |
 
-**argument-hint**: `[ui] [--port N] [--rounds N] [--prompt TEXT] [--sort ttft|total] [--models a,b] [--exclude a,b] [--json] [--no-save]`
+**argument-hint**: `[ui] [--port N] [--rounds N] [--prompt TEXT] [--sort ttft|total] [--concurrency N] [--stagger MS] [--models a,b] [--exclude a,b] [--json] [--no-save]`
 
 ## Step 0: 模式
 

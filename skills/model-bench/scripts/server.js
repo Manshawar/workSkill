@@ -120,6 +120,14 @@ function createServer() {
         const prompt = typeof body.prompt === 'string' && body.prompt.trim() ? body.prompt.trim() : '你好';
         const timeoutMs = Math.max(5000, parseInt(body.timeoutMs, 10) || 120000);
         const sortBy = body.sortBy === 'total' ? 'total' : 'ttft';
+        const staggerMs = Math.max(0, parseInt(body.staggerMs, 10) || 1000);
+        let concurrency = 6;
+        if (body.concurrency === 'all' || body.concurrency === 0) {
+          concurrency = Infinity;
+        } else if (body.concurrency != null && body.concurrency !== '') {
+          const n = parseInt(body.concurrency, 10);
+          if (Number.isFinite(n) && n > 0) concurrency = n;
+        }
 
         // SSE progress
         res.writeHead(200, {
@@ -131,12 +139,14 @@ function createServer() {
           res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
         };
 
-        send('start', { count: models.length, rounds, prompt, sortBy });
+        send('start', { count: models.length, rounds, prompt, sortBy, concurrency, staggerMs });
         const bench = await benchModels(gw.apiRoot, gw.apiKey, models, {
           prompt,
           rounds,
           timeoutMs,
           sortBy,
+          concurrency,
+          staggerMs,
           onProgress: (ev) => send('progress', ev),
         });
         let historyFile = null;
@@ -152,6 +162,8 @@ function createServer() {
           prompt: bench.prompt,
           rounds: bench.rounds,
           sortBy: bench.sortBy,
+          concurrency: bench.concurrency,
+          staggerMs: bench.staggerMs,
           historyFile,
         });
         res.end();
