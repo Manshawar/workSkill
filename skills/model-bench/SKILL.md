@@ -99,11 +99,11 @@ node scripts/bench.js --rounds 2 --json
 
 ```bash
 node scripts/bench.js ui
-# 等价: node scripts/server.js
 ```
 
 启动后打开输出的 `http://127.0.0.1:8787/`。  
-页面：进入拉 `/api/models` → 勾选 → **一键测速**（服务端读 env 代理，浏览器不持有 key）。
+页面：进入拉 `/api/models` → 勾选 → **一键测速**。  
+**定时探测（仅 UI）**：开启后每 N 分钟（默认 10）自动测当前勾选模型，localStorage 存历史，SVG 折线看 Total 走势，稳度按标准差排序。须保持页面打开（关标签即停）。
 
 后台跑 UI 时告知用户 URL，并说明 Ctrl+C 结束。
 
@@ -129,4 +129,5 @@ node scripts/bench.js ui
 - [ ] 测的是 **stream 首包 TTFT（秒）**（`delta.content` 首次非空）
 - [ ] 模型列表来自 `/v1/models`（或用户显式 `--models`）
 - [ ] 有排行（TTFT s）+ 当前推荐
-- [ ] UI 模式已给出本地 URL
+- [ ] UI 模式已给出本地 URL；若开定时探测，说明需保持页面打开
+- [ ] 未引入重型图表库（SVG 原生折线）

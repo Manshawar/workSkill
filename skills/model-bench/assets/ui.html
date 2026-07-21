@@ -28,7 +28,7 @@
       min-height: 100vh;
     }
     main {
-      max-width: 920px;
+      max-width: 980px;
       margin: 0 auto;
       padding: 32px 20px 64px;
     }
@@ -52,20 +52,13 @@
       align-items: center;
     }
     label { color: var(--muted); font-size: 13px; }
-    select {
+    select, input[type="text"], input[type="number"] {
       border: 1px solid var(--line);
       border-radius: 6px;
       padding: 8px 10px;
       font: inherit;
       background: #fff;
-    }
-    input[type="text"], input[type="number"] {
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      padding: 8px 10px;
-      font: inherit;
-      background: #fff;
-      min-width: 120px;
+      min-width: 100px;
     }
     input[type="text"].grow { flex: 1; min-width: 200px; }
     button {
@@ -77,10 +70,7 @@
       background: var(--accent);
       color: var(--accent-fg);
     }
-    button:disabled {
-      opacity: 0.45;
-      cursor: not-allowed;
-    }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
     button.secondary {
       background: transparent;
       color: var(--accent);
@@ -110,7 +100,6 @@
       font-size: 13px;
       padding: 6px 8px;
       border-radius: 6px;
-      border: 1px solid transparent;
     }
     .models label.item:hover { background: #f3efe6; }
     table {
@@ -145,12 +134,40 @@
     .setup ol { margin: 8px 0 0; padding-left: 20px; color: var(--muted); }
     .setup li { margin: 4px 0; }
     .hidden { display: none; }
+    .chart-wrap {
+      width: 100%;
+      overflow-x: auto;
+      margin-top: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+    .chart-wrap svg { display: block; width: 100%; min-width: 640px; height: 280px; }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 14px;
+      margin-top: 10px;
+      font-size: 12px;
+    }
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .swatch {
+      width: 12px;
+      height: 3px;
+      border-radius: 2px;
+      display: inline-block;
+    }
+    .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
   </style>
 </head>
 <body>
   <main>
     <h1>model-bench</h1>
-    <p class="sub">模型并发测速（启动错开 1s，concurrency 限流）。默认按 Total 排序——Agent 等整轮结束后再下一步；TTFT 仅参考。</p>
+    <p class="sub">默认按 Total 排序（整轮结束再下一步）。UI 可开定时探测 + 折线看稳定性。</p>
 
     <section class="panel" id="health-panel">
       <div class="row">
@@ -160,11 +177,9 @@
       <div class="status" id="health-msg"></div>
       <div class="setup hidden" id="setup-help">
         <ol>
-          <li>在系统里设置 <code id="env-base-name">AI_GATEWAY_BASE_URL</code>（网关根地址，如 <code>https://ai-gateway.example.com</code>）</li>
-          <li>设置 <code id="env-key-name">AI_GATEWAY_API_KEY</code>（Bearer Token；不要发到聊天里）</li>
-          <li>macOS/Linux：写入 shell rc 后 <code>source</code>；Windows：用户环境变量后重开终端</li>
-          <li>关掉本页对应的 Node 进程，重新执行 <code>node scripts/bench.js ui</code></li>
-          <li>验证只看长度：Unix <code>echo ${#AI_GATEWAY_API_KEY}</code> / PowerShell <code>$env:AI_GATEWAY_API_KEY.Length</code></li>
+          <li>设置 <code id="env-base-name">AI_GATEWAY_BASE_URL</code>（如 <code>https://ai-gateway.example.com</code>）</li>
+          <li>设置 <code id="env-key-name">AI_GATEWAY_API_KEY</code>（勿发到聊天）</li>
+          <li>重开终端 / IDE 后执行 <code>node scripts/bench.js ui</code></li>
         </ol>
       </div>
     </section>
@@ -172,7 +187,7 @@
     <section class="panel">
       <div class="row">
         <label>rounds <input type="number" id="rounds" min="1" max="5" value="1" /></label>
-        <label>concurrency <input type="number" id="concurrency" min="1" max="50" value="6" title="同时进行中的模型数；防打爆主要靠这个" /></label>
+        <label>concurrency <input type="number" id="concurrency" min="1" max="50" value="6" /></label>
         <label>stagger(ms) <input type="number" id="staggerMs" min="0" step="500" value="1000" /></label>
         <label>sort
           <select id="sortBy">
@@ -189,7 +204,7 @@
       <div class="row" style="margin-top:10px">
         <button type="button" class="secondary" id="btn-all" disabled>全选</button>
         <button type="button" class="secondary" id="btn-none" disabled>全不选</button>
-        <span class="status" id="model-meta"></span>
+        <span class="status" id="model-meta" style="margin:0"></span>
       </div>
       <div class="models" id="models"></div>
       <div class="status" id="run-status"></div>
@@ -197,7 +212,7 @@
 
     <section class="panel">
       <div class="row">
-        <strong>排行</strong>
+        <strong>排行（单次）</strong>
         <span id="rec"></span>
       </div>
       <table>
@@ -216,10 +231,252 @@
       </table>
       <div class="status" id="fail-box"></div>
     </section>
+
+    <section class="panel">
+      <div class="row">
+        <strong>定时探测 · 稳定性</strong>
+        <label><input type="checkbox" id="watch-on" /> 开启（需保持本页打开）</label>
+        <label>间隔(分) <input type="number" id="watch-min" min="1" max="120" value="10" /></label>
+        <button type="button" class="secondary" id="btn-watch-now" disabled>立刻探测一次</button>
+        <button type="button" class="secondary" id="btn-watch-clear">清空历史</button>
+      </div>
+      <p class="hint">每轮写入浏览器 localStorage；按 Total 画折线。稳度 = 多次 Total 的标准差（越低越稳），并给出均值。</p>
+      <div class="status" id="watch-status"></div>
+      <div class="chart-wrap">
+        <svg id="chart" viewBox="0 0 900 280" preserveAspectRatio="none" aria-label="Total latency over time"></svg>
+      </div>
+      <div class="legend" id="chart-legend"></div>
+      <div class="row" style="margin-top:14px">
+        <strong>稳度排行</strong>
+        <span id="stable-rec"></span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th class="num">#</th>
+            <th>Model</th>
+            <th class="num">Avg Total (s)</th>
+            <th class="num">StdDev (s)</th>
+            <th class="num">Samples</th>
+          </tr>
+        </thead>
+        <tbody id="stable-body">
+          <tr><td colspan="5" class="status">尚无历史（开启定时或点「立刻探测」）</td></tr>
+        </tbody>
+      </table>
+    </section>
   </main>
   <script>
     const $ = (id) => document.getElementById(id);
+    const HISTORY_KEY = 'model-bench.watch.v1';
+    const MAX_PROBES = 144; // 10min * 144 ≈ 24h
+    const LINE_COLORS = [
+      '#0b3d2e', '#b85c38', '#2f5d8c', '#6b4c9a', '#c43d5a',
+      '#3d7a5a', '#8a6d3b', '#1f6b8a', '#7a3e5c', '#4a6741',
+    ];
+
     let ready = false;
+    let busy = false;
+    let watchTimer = null;
+
+    function loadHistory() {
+      try {
+        const raw = localStorage.getItem(HISTORY_KEY);
+        if (!raw) return { probes: [] };
+        const data = JSON.parse(raw);
+        return { probes: Array.isArray(data.probes) ? data.probes : [] };
+      } catch {
+        return { probes: [] };
+      }
+    }
+
+    function saveHistory(hist) {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(hist));
+    }
+
+    function appendProbe(final) {
+      const hist = loadHistory();
+      const points = [];
+      for (const r of (final.ranked || [])) {
+        if (r.model && r.totalSec != null) {
+          points.push({
+            model: r.model,
+            totalSec: Number(r.totalSec),
+            ttftSec: r.ttftSec != null ? Number(r.ttftSec) : null,
+          });
+        }
+      }
+      hist.probes.push({ at: final.at || new Date().toISOString(), points });
+      if (hist.probes.length > MAX_PROBES) {
+        hist.probes = hist.probes.slice(-MAX_PROBES);
+      }
+      saveHistory(hist);
+      renderWatch();
+    }
+
+    function mean(arr) {
+      if (!arr.length) return null;
+      return arr.reduce((a, b) => a + b, 0) / arr.length;
+    }
+
+    function stddev(arr) {
+      if (arr.length < 2) return 0;
+      const m = mean(arr);
+      const v = arr.reduce((s, x) => s + (x - m) * (x - m), 0) / (arr.length - 1);
+      return Math.sqrt(v);
+    }
+
+    function stabilityStats(hist) {
+      const byModel = new Map();
+      for (const probe of hist.probes) {
+        for (const p of probe.points || []) {
+          if (!byModel.has(p.model)) byModel.set(p.model, []);
+          byModel.get(p.model).push(p.totalSec);
+        }
+      }
+      const rows = [];
+      for (const [model, vals] of byModel) {
+        rows.push({
+          model,
+          avg: mean(vals),
+          sd: stddev(vals),
+          n: vals.length,
+        });
+      }
+      // most stable: prefer n>=3, then lowest stddev, then lowest avg
+      rows.sort((a, b) => {
+        const aOk = a.n >= 3 ? 0 : 1;
+        const bOk = b.n >= 3 ? 0 : 1;
+        if (aOk !== bOk) return aOk - bOk;
+        if (a.sd !== b.sd) return a.sd - b.sd;
+        return a.avg - b.avg;
+      });
+      return rows;
+    }
+
+    function renderStabilityTable(rows) {
+      const body = $('stable-body');
+      body.innerHTML = '';
+      if (!rows.length) {
+        body.innerHTML = '<tr><td colspan="5" class="status">尚无历史</td></tr>';
+        $('stable-rec').textContent = '';
+        return;
+      }
+      rows.forEach((r, i) => {
+        const tr = document.createElement('tr');
+        if (i === 0 && r.n >= 3) tr.className = 'top';
+        tr.innerHTML =
+          '<td class="num">' + (i + 1) + '</td>' +
+          '<td>' + escapeHtml(r.model) + (i === 0 && r.n >= 3 ? '<span class="pill">most stable</span>' : '') + '</td>' +
+          '<td class="num">' + r.avg.toFixed(2) + '</td>' +
+          '<td class="num">' + r.sd.toFixed(2) + '</td>' +
+          '<td class="num">' + r.n + '</td>';
+        body.appendChild(tr);
+      });
+      const top = rows.find((r) => r.n >= 3) || rows[0];
+      if (top.n >= 3) {
+        $('stable-rec').innerHTML =
+          '最稳：<code>' + escapeHtml(top.model) + '</code>（σ=' +
+          top.sd.toFixed(2) + 's，avg=' + top.avg.toFixed(2) + 's，n=' + top.n + '）';
+      } else {
+        $('stable-rec').textContent = '样本不足 3 次，稳度仅供参考';
+      }
+    }
+
+    function renderChart(hist) {
+      const svg = $('chart');
+      const legend = $('chart-legend');
+      legend.innerHTML = '';
+      const probes = hist.probes;
+      if (probes.length < 1) {
+        svg.innerHTML = '<text x="20" y="140" fill="#5c5c5c" font-size="14">暂无数据</text>';
+        return;
+      }
+
+      const modelSet = new Set();
+      for (const p of probes) {
+        for (const pt of p.points || []) modelSet.add(pt.model);
+      }
+      // Prefer currently selected; else all (cap 10 lines)
+      let models = selectedModels().filter((m) => modelSet.has(m));
+      if (!models.length) models = [...modelSet];
+      models = models.slice(0, 10);
+
+      const series = models.map((model) => {
+        const ys = probes.map((probe) => {
+          const hit = (probe.points || []).find((x) => x.model === model);
+          return hit ? hit.totalSec : null;
+        });
+        return { model, ys };
+      });
+
+      const allY = series.flatMap((s) => s.ys.filter((v) => v != null));
+      const yMin = allY.length ? Math.min(...allY) : 0;
+      const yMax = allY.length ? Math.max(...allY) : 1;
+      const pad = (yMax - yMin) * 0.08 || 0.1;
+      const lo = Math.max(0, yMin - pad);
+      const hi = yMax + pad;
+
+      const W = 900, H = 280;
+      const L = 48, R = 16, T = 16, B = 36;
+      const iw = W - L - R;
+      const ih = H - T - B;
+      const n = probes.length;
+      const xAt = (i) => L + (n === 1 ? iw / 2 : (i / (n - 1)) * iw);
+      const yAt = (v) => T + ih - ((v - lo) / (hi - lo || 1)) * ih;
+
+      let html = '';
+      // grid
+      for (let g = 0; g <= 4; g++) {
+        const y = T + (ih * g) / 4;
+        const val = hi - ((hi - lo) * g) / 4;
+        html += '<line x1="' + L + '" y1="' + y + '" x2="' + (W - R) + '" y2="' + y + '" stroke="#e8e2d6" />';
+        html += '<text x="' + (L - 6) + '" y="' + (y + 4) + '" text-anchor="end" fill="#5c5c5c" font-size="11">' +
+          val.toFixed(1) + '</text>';
+      }
+      // x labels: first / mid / last
+      const labelIdx = n === 1 ? [0] : n === 2 ? [0, 1] : [0, Math.floor((n - 1) / 2), n - 1];
+      for (const i of labelIdx) {
+        const t = probes[i].at || '';
+        const short = t.slice(11, 16) || t.slice(0, 10);
+        html += '<text x="' + xAt(i) + '" y="' + (H - 10) + '" text-anchor="middle" fill="#5c5c5c" font-size="11">' +
+          escapeHtml(short) + '</text>';
+      }
+
+      series.forEach((s, si) => {
+        const color = LINE_COLORS[si % LINE_COLORS.length];
+        const parts = [];
+        let started = false;
+        s.ys.forEach((v, i) => {
+          if (v == null) {
+            started = false;
+            return;
+          }
+          const cmd = started ? 'L' : 'M';
+          parts.push(cmd + ' ' + xAt(i) + ' ' + yAt(v));
+          started = true;
+          html += '<circle cx="' + xAt(i) + '" cy="' + yAt(v) + '" r="3" fill="' + color + '" />';
+        });
+        if (parts.length) {
+          html += '<path d="' + parts.join(' ') + '" fill="none" stroke="' + color + '" stroke-width="2" />';
+        }
+        const leg = document.createElement('span');
+        leg.innerHTML = '<i class="swatch" style="background:' + color + '"></i>' + escapeHtml(s.model);
+        legend.appendChild(leg);
+      });
+
+      html += '<text x="8" y="14" fill="#5c5c5c" font-size="11">Total (s)</text>';
+      svg.innerHTML = html;
+    }
+
+    function renderWatch() {
+      const hist = loadHistory();
+      $('watch-status').textContent =
+        '历史探测 ' + hist.probes.length + ' 次' +
+        (hist.probes.length ? ' · 最近 ' + hist.probes[hist.probes.length - 1].at : '');
+      renderChart(hist);
+      renderStabilityTable(stabilityStats(hist));
+    }
 
     async function loadHealth() {
       const title = $('health-title');
@@ -254,12 +511,15 @@
         msg.textContent = String(e.message || e);
         help.classList.remove('hidden');
       }
+      renderWatch();
     }
 
     function setControls(on) {
-      ['btn-models', 'btn-bench', 'btn-all', 'btn-none'].forEach((id) => {
-        $(id).disabled = !on;
+      ['btn-models', 'btn-bench', 'btn-all', 'btn-none', 'btn-watch-now'].forEach((id) => {
+        $(id).disabled = !on || (id !== 'btn-watch-now' && busy);
       });
+      $('btn-watch-now').disabled = !on || busy;
+      $('btn-bench').disabled = !on || busy;
     }
 
     function selectedModels() {
@@ -283,6 +543,7 @@
           cb.type = 'checkbox';
           cb.value = id;
           cb.checked = true;
+          cb.addEventListener('change', () => renderWatch());
           const span = document.createElement('span');
           span.textContent = id;
           label.appendChild(cb);
@@ -290,6 +551,7 @@
           frag.appendChild(label);
         }
         $('models').appendChild(frag);
+        renderWatch();
       } catch (e) {
         $('model-meta').textContent = '';
         $('run-status').className = 'status bad';
@@ -339,20 +601,22 @@
       })[c]);
     }
 
-    async function runBench() {
-      if (!ready) return;
+    async function runBench({ record = true, fromWatch = false } = {}) {
+      if (!ready || busy) return;
       const models = selectedModels();
       if (!models.length) {
         $('run-status').className = 'status bad';
         $('run-status').textContent = '请至少选择一个模型';
         return;
       }
+      busy = true;
       setControls(false);
-      $('btn-bench').disabled = true;
       $('run-status').className = 'status';
-      $('run-status').textContent = '测速中…';
-      $('rec').textContent = '';
-      $('fail-box').textContent = '';
+      $('run-status').textContent = fromWatch ? '定时探测中…' : '测速中…';
+      if (!fromWatch) {
+        $('rec').textContent = '';
+        $('fail-box').textContent = '';
+      }
 
       const payload = {
         models,
@@ -396,7 +660,7 @@
             let data;
             try { data = JSON.parse(dataLine); } catch { continue; }
             if (event === 'progress' && data.type === 'model_start') {
-              $('run-status').textContent = '测速中 → ' + data.model;
+              $('run-status').textContent = (fromWatch ? '定时探测 → ' : '测速中 → ') + data.model;
             }
             if (event === 'progress' && data.type === 'model_done') {
               const r = data.result;
@@ -410,24 +674,71 @@
         }
         if (!final) throw new Error('未收到完成事件');
         renderRank(final);
+        if (record) appendProbe(final);
         $('run-status').className = 'status ok';
-        $('run-status').textContent = '完成 @ ' + (final.at || '');
+        $('run-status').textContent = (fromWatch ? '定时探测完成 @ ' : '完成 @ ') + (final.at || '');
       } catch (e) {
         $('run-status').className = 'status bad';
         $('run-status').textContent = String(e.message || e);
       } finally {
+        busy = false;
         if (ready) setControls(true);
       }
     }
 
+    function stopWatch() {
+      if (watchTimer) {
+        clearInterval(watchTimer);
+        watchTimer = null;
+      }
+    }
+
+    function startWatch() {
+      stopWatch();
+      const mins = Math.max(1, Number($('watch-min').value) || 10);
+      const ms = mins * 60 * 1000;
+      watchTimer = setInterval(() => {
+        if (document.hidden) {
+          $('watch-status').textContent =
+            (loadHistory().probes.length ? '历史 ' + loadHistory().probes.length + ' 次 · ' : '') +
+            '标签页在后台，浏览器可能推迟定时；切回前台会继续';
+        }
+        runBench({ record: true, fromWatch: true });
+      }, ms);
+      $('watch-status').className = 'status ok';
+      $('watch-status').textContent =
+        '已开启：每 ' + mins + ' 分钟探测当前勾选模型（保持页面打开）';
+    }
+
     $('btn-reload-health').onclick = loadHealth;
     $('btn-models').onclick = loadModels;
-    $('btn-bench').onclick = runBench;
+    $('btn-bench').onclick = () => runBench({ record: true, fromWatch: false });
     $('btn-all').onclick = () => {
       document.querySelectorAll('#models input[type=checkbox]').forEach((el) => { el.checked = true; });
+      renderWatch();
     };
     $('btn-none').onclick = () => {
       document.querySelectorAll('#models input[type=checkbox]').forEach((el) => { el.checked = false; });
+      renderWatch();
+    };
+    $('btn-watch-now').onclick = () => runBench({ record: true, fromWatch: true });
+    $('btn-watch-clear').onclick = () => {
+      if (confirm('清空本机定时探测历史？')) {
+        saveHistory({ probes: [] });
+        renderWatch();
+      }
+    };
+    $('watch-on').onchange = () => {
+      if ($('watch-on').checked) {
+        startWatch();
+        runBench({ record: true, fromWatch: true }); // 开启时先打一轮，不必干等 10 分钟
+      } else {
+        stopWatch();
+        renderWatch();
+      }
+    };
+    $('watch-min').onchange = () => {
+      if ($('watch-on').checked) startWatch();
     };
 
     loadHealth();
