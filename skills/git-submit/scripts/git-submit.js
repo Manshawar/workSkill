@@ -200,29 +200,19 @@ function amendInfo(cwd, branch, forceDeep) {
 }
 
 function recentLog(cwd, deep) {
-  // 默认轻量：只取 subject；deep 时再带 body 是否含 Change-Id（逐条）
-  const format = deep ? '%h%x09%s%x09%b' : '%h%x09%s';
-  const raw = git(cwd, ['log', '--format=' + format, '-20'], { allowFail: true });
-  if (!raw) return { checked: false, items: [] };
-
   if (!deep) {
-    // 轻量：用一次 log 扫 Change-Id 出现与否（不全文）
+    // 轻量：只要 type 样例 + 是否出现过 Change-Id，不回传 20 条 items（省上下文）
+    const subjects = git(cwd, ['log', '-8', '--format=%s'], { allowFail: true }) || '';
     const bodies = git(cwd, ['log', '-20', '--format=%b'], { allowFail: true }) || '';
-    const anyCid = /Change-Id:/i.test(bodies);
-    const items = raw.split('\n').filter(Boolean).map((line) => {
-      const [hash, ...rest] = line.split('\t');
-      return { hash, subject: rest.join('\t') };
-    });
+    const type_samples = subjects.split('\n').filter(Boolean);
     return {
       checked: true,
       deep: false,
-      any_change_id: anyCid,
-      type_samples: items.slice(0, 8).map((i) => i.subject),
-      items,
+      any_change_id: /Change-Id:/i.test(bodies),
+      type_samples,
     };
   }
 
-  // deep：%h\\0%s\\0%b\\0 三联
   const nullRaw = git(cwd, ['log', '-20', '--format=%h%x00%s%x00%b%x00'], { allowFail: true }) || '';
   const parts = nullRaw.split('\x00');
   const items = [];
@@ -246,6 +236,36 @@ function recentLog(cwd, deep) {
   };
 }
 
+function syncInfo(cwd, branch) {
+  let ahead = 0;
+  let behind = 0;
+  if (branch) {
+    // 不 fetch；只读本地已有 origin/<branch> 信息（fetch 留给 sync 步）
+    const ab = git(
+      cwd,
+      ['rev-list', '--left-right', '--count', `HEAD...origin/${branch}`],
+      { allowFail: true },
+    );
+    // output: "<behind>\t<ahead>" with --left-right relative to first...second?
+    // HEAD...origin/branch with --left-right: left=HEAD only (=ahead), right=origin only (=behind)
+    // Actually: git rev-list --left-right --count A...B → "<commits only in A>\t<commits only in B>"
+    // HEAD...origin/X → ahead \t behind
+    if (ab) {
+      const [left, right] = ab.split(/\s+/).map((n) => parseInt(n, 10) || 0);
+      ahead = left;
+      behind = right;
+    }
+  }
+  return {
+    ahead,
+    behind,
+    needs_sync: behind > 0,
+    note: behind > 0
+      ? '本地落后远程；有未提交改动时必须先 commit 再 fetch+rebase（禁止 stash）'
+      : '本地不落后 origin/<branch>（仍建议 push 前 fetch 确认）',
+  };
+}
+
 function cmdProbe(args) {
   const cwd = args.cwd;
   const out = {
@@ -257,6 +277,7 @@ function cmdProbe(args) {
     branch: null,
     upstream: null,
     remotes: '',
+    sync: null,
     status: null,
     untracked_policy: null,
     diff_stat: '',
@@ -269,6 +290,7 @@ function cmdProbe(args) {
     amend: null,
     danger_hits: [],
     hints: [],
+    bash_plan: [],
   };
 
   if (!isGitRepo(cwd)) {
@@ -278,7 +300,6 @@ function cmdProbe(args) {
     process.exit(0);
   }
   out.is_git = true;
-  // 子目录开 IDE 时 cwd≠仓库根；文件类配置读 repo_root
   out.repo_root = git(cwd, ['rev-parse', '--show-toplevel'], { allowFail: true }) || cwd;
 
   out.branch = git(cwd, ['branch', '--show-current'], { allowFail: true }) || null;
@@ -287,12 +308,17 @@ function cmdProbe(args) {
 
   const statusText = git(cwd, ['status', '--short'], { allowFail: true }) || '';
   const parsed = parseStatusShort(statusText);
+  // 精简 status：不回传 entries 全量（与 changed/untracked 重复，浪费上下文）
   out.status = {
     short: statusText,
-    entries: parsed.entries,
     conflict: parsed.conflict,
     changed: parsed.changed,
     untracked: parsed.untracked,
+    counts: {
+      changed: parsed.changed.length,
+      untracked: parsed.untracked.length,
+      conflict: parsed.conflict.length,
+    },
   };
   out.untracked_policy = classifyUntracked(parsed.untracked);
   out.clean = parsed.entries.length === 0;
@@ -319,6 +345,8 @@ function cmdProbe(args) {
   }
 
   out.config = readConfig(out.repo_root);
+  // 不回传 raw 整份配置
+  if (out.config && out.config.raw) delete out.config.raw;
 
   const remoteGuess = detectStrategyFromRemotes(out.remotes);
   if (out.config.pushStrategy) {
@@ -336,12 +364,13 @@ function cmdProbe(args) {
     out.hints.push('门4: push 策略未知，需问用户并写回 .git-submit.json');
   }
 
-  // 不检查 commit-msg hook：子目录开 IDE / worktree 易误判；缺 Change-Id 由 push 失败再处理
+  out.sync = syncInfo(cwd, out.branch);
+
   const maybeGerrit = out.push_strategy === 'gerrit' || out.push_strategy === 'unknown';
   const needLog = args.deepLog || maybeGerrit || !out.clean;
   out.recent_log = needLog
     ? recentLog(cwd, args.deepLog)
-    : { checked: false, items: [], skipped: 'clean_or_plain_git' };
+    : { checked: false, type_samples: [], skipped: 'clean_or_plain_git' };
 
   out.amend = amendInfo(cwd, out.branch, false);
 
@@ -351,6 +380,18 @@ function cmdProbe(args) {
   }
 
   if (out.amend && out.amend._deep === undefined) delete out.amend._deep;
+
+  // 给模型的理想 Bash 预算（有改动时）
+  if (!out.clean && !parsed.conflict.length) {
+    out.bash_plan = [
+      '1) git add + git commit（先提交；禁止先 rebase/stash）',
+      '2) git fetch && git rebase origin/<branch>（commit 后工作区干净）',
+      out.push_strategy === 'gerrit'
+        ? '3) git push refs/for + git push branch（可同一 Bash）'
+        : '3) git push origin <branch>',
+    ];
+    out.hints.push('顺序铁律: 有未提交改动 → 先 commit 再 sync；禁止 stash；禁止 probe 后再 git diff/status/log');
+  }
 
   console.log(JSON.stringify(out, null, 2));
 }
