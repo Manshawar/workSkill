@@ -12,12 +12,12 @@
 |---|---|---|---|
 | [`skills/daily-report`](./skills/daily-report) | ✅ 可用 | 日报生成器：从当日 git commit 自动生成按小时填写、含【项目名】前缀的多项目并线日报 | `日报` / `daily report` / `写日报` / `生成日报` / `填一下今天干了啥` |
 | [`skills/vf-fix`](./skills/vf-fix) | ✅ 可用 | 前端最小修复（vf 族）：优先代码+引用关系；缺关键信息先问用户，禁止猜着改；不够再开 agent-browser | `vf-fix` / `页面上不对帮我修` / `提交没反应` / `联调修 bug` / `e2e 失败修一下` |
-| [`skills/vf-e2e`](./skills/vf-e2e) | ✅ 可用 | 低成本前端业务闭环验证（vf 族）：按业务逻辑走完「触发→处理→数据→反馈」四环；真实 UI 操作；产物在 `.verify/`；发现问题不修复 | `vf-e2e` / `验证业务流程` / `走一遍正常流程` / `业务验证` / `回归验证` |
+| [`skills/vf-e2e`](./skills/vf-e2e) | ✅ 可用 | 低成本业务闭环 E2E（vf 族）：Agent 建模流程 + Playwright 真浏览器；Planner/Reviewer 视角；极简 Markdown 在 `.verify/e2e/`；验不修 | `vf-e2e` / `E2E` / `验证业务流程` / `走一遍正常流程` / `生成 e2e spec` / `回归验证` |
 | [`skills/vf-mry`](./skills/vf-mry) | ✅ 可用 | 前端问题经验沉淀（vf 族）：已确认问题/原因/约束写入本地 `.verify/knowledge/`；只记规则不修代码 | `vf-mry` / `沉淀经验` / `记规则` / `记录修复约束` / `E2E 失败后沉淀` |
 | [`skills/git-submit`](./skills/git-submit) | ✅ 可用 | Git 自动提交 Agent：同步远程(rebase) → 分析 diff → 生成 Conventional Commit 中文消息 → 自动 push；自动识别 Gerrit vs 普通 git，Gerrit 走两步推送(先 `HEAD:refs/for/分支` 触发校验生成 Change-Id，再直接 push 落分支，绕过人工 review)，已有 Change-Id 则 amend 续 Review；只在冲突/拆分/危险文件/推送类型/多消息方案 5 类硬决策处问用户 | `提交代码` / `提交一下` / `git submit` / `commit 并 push` / `推送代码` / `帮我提交` / `走 Gerrit Review` / `提个 review` / `grp 推送` |
 | [`skills/skill-hub`](./skills/skill-hub) | 🚧 即将实现 | Skill 元数据 + 使用统计 + 推荐系统的注册中心。当前仅有设计文档与参考资料，实现日期待定 | — |
 
-> **vf 族协作关系**：`vf-fix` 探+修 → `vf-e2e` 验不修 → `vf-mry` 沉淀不修。三个 skill 共享项目本地 `.verify/` 目录，互不污染业务代码。
+> **vf 族协作关系**：`vf-fix` 探+修 → `vf-e2e` 验不修 → `vf-mry` 沉淀不修。共享 `.verify/`：`knowledge/` 族共建知识库；`e2e/` 仅 Playwright + 编排 md + specs（可供后续 vf-code 交叉引用 process），互不污染业务代码。
 
 ---
 
